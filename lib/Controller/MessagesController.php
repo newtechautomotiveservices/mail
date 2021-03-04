@@ -57,6 +57,7 @@ use OCP\Files\IMimeTypeDetector;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IURLGenerator;
+use PDO;
 use Psr\Log\LoggerInterface;
 use function array_map;
 
@@ -646,6 +647,69 @@ class MessagesController extends Controller {
 			$value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
 			$this->mailManager->flagMessage($account, $mailbox->getName(), $message->getUid(), $flag, $value);
 		}
+		return new JSONResponse();
+	}
+
+	/**
+	 * @NoAdminRequired
+	 * @TrapError
+	 *
+	 * @param int $id
+	 * @param array $flags
+	 *
+	 * @return JSONResponse
+	 *
+	 * @throws ClientException
+	 * @throws ServiceException
+	 */
+	public function setTag(int $id, int $tagId): JSONResponse {
+		try {
+			$message = $this->mailManager->getMessage($this->currentUserId, $id);
+			$mailbox = $this->mailManager->getMailbox($this->currentUserId, $message->getMailboxId());
+			$account = $this->accountService->find($this->currentUserId, $mailbox->getAccountId());
+		} catch (DoesNotExistException $e) {
+			return new JSONResponse([], Http::STATUS_FORBIDDEN);
+		}
+		$qb = $this->db->getQueryBuilder();
+		$qb->select()
+			->from('mail_tags')
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($id)))
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($this->currentUserId)));
+		$qb->execute();
+		// fetch the label entry
+		$column = $qb->fetch(PDO::FETCH_ASSOC);
+		$qb->closeCursor();
+
+		if( $column === false ) {
+			throw new DoesNotExistException( 'Tag does not exist' );
+		}
+
+		$this->mailManager->tagMessage($account, $mailbox->getName(), $message->getUid(), $tag, 'true');
+		// add tagging logic here
+		return new JSONResponse();
+	}
+
+	/**
+	 * @NoAdminRequired
+	 * @TrapError
+	 *
+	 * @param int $id
+	 * @param array $flags
+	 *
+	 * @return JSONResponse
+	 *
+	 * @throws ClientException
+	 * @throws ServiceException
+	 */
+	public function removeTag(int $id, int $tagId): JSONResponse {
+		try {
+			$message = $this->mailManager->getMessage($this->currentUserId, $id);
+			$mailbox = $this->mailManager->getMailbox($this->currentUserId, $message->getMailboxId());
+			$account = $this->accountService->find($this->currentUserId, $mailbox->getAccountId());
+		} catch (DoesNotExistException $e) {
+			return new JSONResponse([], Http::STATUS_FORBIDDEN);
+		}
+		// add tagging logic here
 		return new JSONResponse();
 	}
 

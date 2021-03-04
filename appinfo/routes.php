@@ -155,6 +155,16 @@ return [
 			'verb' => 'PUT'
 		],
 		[
+			'name' => 'messages#setTag',
+			'url' => '/api/messages/{id}/tags/{tagId}',
+			'verb' => 'PUT'
+		],
+		[
+			'name' => 'messages#removeTag',
+			'url' => '/api/messages/{id}/tags/{tagId}',
+			'verb' => 'DELETE'
+		],
+		[
 			'name' => 'messages#move',
 			'url' => '/api/messages/{id}/move',
 			'verb' => 'POST'

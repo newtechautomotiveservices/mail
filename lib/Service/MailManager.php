@@ -419,6 +419,43 @@ class MailManager implements IMailManager {
 		);
 	}
 
+	public function tagMessage(Account $account, string $mailbox, int $uid, array $tag, bool $value): void {
+		$client = $this->imapClientFactory->getClient($account);
+		try {
+			$mb = $this->mailboxMapper->find($account, $mailbox);
+		} catch (DoesNotExistException $e) {
+			throw new ClientException("Mailbox $mailbox does not exist", 0, $e);
+		}
+
+		if( $this->isPermflagsEnabled( $account, $mailbox ) === true ) {
+			try {
+				if ($value === true) {
+					// imap keywords and flags work the same way
+					$this->imapMessageMapper->addFlag($client, $mb, $uid, $tag['imap_label']);
+				} else {
+					$this->imapMessageMapper->removeFlag($client, $mb, $uid, $tag['imap_label']);
+				}
+			} catch (Horde_Imap_Client_Exception $e) {
+				throw new ServiceException(
+					"Could not set message keyword on IMAP: " . $e->getMessage(),
+					(int) $e->getCode(),
+					$e
+				);
+			}
+		}
+
+		$this->eventDispatcher->dispatch(
+			MessageFlaggedEvent::class,
+			new MessageFlaggedEvent(
+				$account,
+				$mb,
+				$uid,
+				$tag['imap_label'],
+				$value
+			)
+		);
+	}
+
 	/**
 	 * @param Account $account
 	 *
