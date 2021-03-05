@@ -409,7 +409,7 @@ class IMAPMessage implements IMessage, JsonSerializable {
 				'mime' => $p->getType(),
 				'size' => $p->getBytes(),
 				'cid' => $p->getContentId(),
-			    'disposition' => $p->getDisposition()
+				'disposition' => $p->getDisposition()
 			];
 			return;
 		}

@@ -22,17 +22,19 @@
 <template>
 	<div class="mail-message-attachments">
 		<div class="attachments">
-			<MessageAttachment
-				v-for="attachment in attachments"
-				:id="attachment.id"
-				:key="attachment.id"
-				:file-name="attachment.fileName"
-				:size="attachment.size"
-				:url="attachment.downloadUrl"
-				:is-image="attachment.isImage"
-				:is-calendar-event="attachment.isCalendarEvent"
-				:mime="attachment.mime"
-				:mime-url="attachment.mimeUrl" />
+			<div v-for="attachment in attachments">
+				<MessageAttachment
+					v-if="attachment.disposition !== 'inline'"
+					:id="attachment.id"
+					:key="attachment.id"
+					:file-name="attachment.fileName"
+					:size="attachment.size"
+					:url="attachment.downloadUrl"
+					:is-image="attachment.isImage"
+					:is-calendar-event="attachment.isCalendarEvent"
+					:mime="attachment.mime"
+					:mime-url="attachment.mimeUrl" />
+			</div>
 		</div>
 		<p v-if="moreThanOne" class="attachments-button-wrapper">
 			<button

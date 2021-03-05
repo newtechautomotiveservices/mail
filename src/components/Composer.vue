@@ -463,7 +463,7 @@ export default {
 
 		// Add attachments in case of forward
 		if (this.forwardFrom?.attachments !== undefined) {
-			this.forwardFrom.attachments.map(att => {
+			this.forwardFrom.attachments.filter(att => att.disposition !== "inline").map(att => {
 				this.attachments.push({
 					fileName: att.fileName,
 					displayName: trimStart('/', att.fileName),
