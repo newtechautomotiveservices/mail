@@ -22,11 +22,10 @@
 <template>
 	<div class="mail-message-attachments">
 		<div class="attachments">
-			<div v-for="attachment in attachments">
+			<div v-for="attachment in attachments" :key="attachment.id">
 				<MessageAttachment
 					v-if="attachment.disposition !== 'inline'"
 					:id="attachment.id"
-					:key="attachment.id"
 					:file-name="attachment.fileName"
 					:size="attachment.size"
 					:url="attachment.downloadUrl"
