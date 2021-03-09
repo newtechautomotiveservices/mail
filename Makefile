@@ -49,7 +49,6 @@ start-docker:
 	-p 25:25 \
 	-p 143:143 \
 	-p 993:993 \
-	-p 4190:4190 \
 	--hostname mail.domain.tld \
 	-e MAILNAME=mail.domain.tld \
 	-e MAIL_ADDRESS=user@domain.tld \

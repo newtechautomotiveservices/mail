@@ -7,15 +7,7 @@ Then open the Mail app from the app menu. Put in your mail account credentials a
 
 ## Configuration
 
-### Attachment size limit
-
-Admins can prevent users from attaching large attachments to their emails. Users will be asked to use link shares instead.
-
-```php
-'app.mail.attachment-size-limit' => 3*1024*1024,
-```
-
-The unit is bytes. The example about with limit to 3MB attachments. The default is 0 bytes which means no upload limit.
+Certain advanced or experimental features need to be specifically enabled in your `config.php`:
 
 ### Timeouts
 Depending on your mail host, it may be necessary to increase your IMAP and/or SMTP timeout threshold. Currently IMAP defaults to 20 seconds and SMTP defaults to 2 seconds. They can be changed as follows:
@@ -28,11 +20,6 @@ Depending on your mail host, it may be necessary to increase your IMAP and/or SM
 ```php
 'app.mail.smtp.timeout' => 2
 ```
-#### Sieve timeout
-```php
-'app.mail.sieve.timeout' => 2
-```
-
 ### Use php-mail for sending mail
 You can use the php-mail function to send mails. This is needed for some webhosters (1&1 (1und1)):
 ```php
@@ -44,19 +31,8 @@ Turn off TLS verfication for IMAP/SMTP. This happens globally for all accounts a
 'app.mail.verify-tls-peer' => false
 ```
 
+[trouble](#troubleshooting)
 ## Troubleshooting
-
-### Logging
-
-The Nextcloud mail app offers an extensive logging system to make it easier identifying and tracking down bugs.
-
-Please enable [debug mode](https://docs.nextcloud.com/server/stable/developer_manual/getting_started/devenv.html#enabling-debug-mode) and set the log [level to debug](https://docs.nextcloud.com/server/stable/admin_manual/configuration_server/logging_configuration.html) in your admin settings. Then try to reproduce your issue and take another look at `data/nextcloud.log`, `data/horde_imap.log` and `data/horde_smtp.log`.
-
-Make sure to remove any sensitive data before posting it publicly. Reset log levels and debug mode to the previous values when you are done debugging.
-
-### Database insert problems on MySQL
-
-If Mail fails to insert new rows for messages (`oc_mail_messages`), recipients (`oc_mail_recipients`) or similar tables, you are possibly not using the 4 byte support. See [the Nextcloud Admin Manual](https://docs.nextcloud.com/server/stable/admin_manual/configuration_database/mysql_4byte_support.html) on how to update your database configuration.
 
 ### Get account IDs
 
@@ -78,17 +54,15 @@ Account 1393:
 - SMTP host: mx.domain.com:587, security: tls
 ```
 
-In this example, `1393` is the *account ID*.
-
 ### Manual account synchronization and threading
 
 To troubleshoot synchronization or threading problems it's helpful to run the sync from the command line while the user does not use the web interface (reduces chances of a conflict):
 
 ```bash
-php -f occ mail:account:sync 1393
+php -f occ mail:account:sync 12345
 ```
 
-1393 represents the [account ID](#get-account-ids).
+12345 represents the [account ID](#get-account-ids).
 
 The command offers a ``--force`` option. Use it wisely as it doesn't perform the same path a typical web triggered sync request would do.
 
@@ -137,7 +111,7 @@ If you encounter an issue with threading, e.g. messages that are supposed to gro
 php -f occ mail:account:export-threads 1393
 ```
 
-1393 represents the [account ID](#get-account-ids).
+12345 represents the [account ID](#get-account-ids).
 
 The output will look similar to this:
 
@@ -186,7 +160,7 @@ The output will look similar to this:
 It's recommended practice to pipe the export into a file, which you can later share with the Mail app community and developers:
 
 ```bash
-php -f occ mail:account:export-threads 1393 | gzip -c > /tmp/nextcloud-mail-threads-1393.json.gz
+php -f occ mail:account:export-threads 12345 > /tmp/nextcloud-mail-threads-12345.json
 ```
 
 ### Gmail

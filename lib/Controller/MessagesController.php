@@ -34,9 +34,6 @@ use Exception;
 use OC\Security\CSP\ContentSecurityPolicyNonceManager;
 use OCA\Mail\Contracts\IMailManager;
 use OCA\Mail\Contracts\IMailSearch;
-use OCA\Mail\Contracts\IMailTransmission;
-use OCA\Mail\Contracts\ITrustedSenderService;
-use OCA\Mail\Db\Message;
 use OCA\Mail\Exception\ClientException;
 use OCA\Mail\Exception\ServiceException;
 use OCA\Mail\Http\AttachmentDownloadResponse;
@@ -51,7 +48,6 @@ use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
-use OCP\AppFramework\Http\ZipResponse;
 use OCP\Files\Folder;
 use OCP\Files\IMimeTypeDetector;
 use OCP\IL10N;
@@ -95,12 +91,6 @@ class MessagesController extends Controller {
 	/** @var ContentSecurityPolicyNonceManager */
 	private $nonceManager;
 
-	/** @var ITrustedSenderService */
-	private $trustedSenderService;
-
-	/** @var IMailTransmission */
-	private $mailTransmission;
-
 	/**
 	 * @param string $appName
 	 * @param IRequest $request
@@ -115,8 +105,6 @@ class MessagesController extends Controller {
 	 * @param IMimeTypeDetector $mimeTypeDetector
 	 * @param IURLGenerator $urlGenerator
 	 * @param ContentSecurityPolicyNonceManager $nonceManager
-	 * @param ITrustedSenderService $trustedSenderService
-	 * @param IMailTransmission $mailTransmission
 	 */
 	public function __construct(string $appName,
 								IRequest $request,
@@ -130,9 +118,7 @@ class MessagesController extends Controller {
 								IL10N $l10n,
 								IMimeTypeDetector $mimeTypeDetector,
 								IURLGenerator $urlGenerator,
-								ContentSecurityPolicyNonceManager $nonceManager,
-								ITrustedSenderService $trustedSenderService,
-								IMailTransmission $mailTransmission) {
+								ContentSecurityPolicyNonceManager $nonceManager) {
 		parent::__construct($appName, $request);
 
 		$this->accountService = $accountService;
@@ -147,8 +133,6 @@ class MessagesController extends Controller {
 		$this->urlGenerator = $urlGenerator;
 		$this->mailManager = $mailManager;
 		$this->nonceManager = $nonceManager;
-		$this->trustedSenderService = $trustedSenderService;
-		$this->mailTransmission = $mailTransmission;
 	}
 
 	/**
@@ -165,7 +149,6 @@ class MessagesController extends Controller {
 	 * @throws ClientException
 	 * @throws ServiceException
 	 */
-
 	public function index(int $mailboxId,
 						  int $cursor = null,
 						  string $filter = null,
@@ -263,30 +246,8 @@ class MessagesController extends Controller {
 		$json['accountId'] = $account->getId();
 		$json['mailboxId'] = $mailbox->getId();
 		$json['databaseId'] = $message->getId();
-		$json['isSenderTrusted'] = $this->isSenderTrusted($message);
 
-		$response = new JSONResponse($json);
-
-		// Enable caching
-		$response->cacheFor(60 * 60);
-
-		return $response;
-	}
-
-	private function isSenderTrusted(Message $message): bool {
-		$from = $message->getFrom();
-		$first = $from->first();
-		if ($first === null) {
-			return false;
-		}
-		$email = $first->getEmail();
-		if ($email === null) {
-			return false;
-		}
-		return $this->trustedSenderService->isTrusted(
-			$this->currentUserId,
-			$email
-		);
+		return new JSONResponse($json);
 	}
 
 	/**
@@ -346,41 +307,6 @@ class MessagesController extends Controller {
 
 	/**
 	 * @NoAdminRequired
-	 * @TrapError
-	 *
-	 * @param int $id
-	 *
-	 * @return JSONResponse
-	 *
-	 * @throws ClientException
-	 * @throws ServiceException
-	 */
-	public function mdn(int $id): JSONResponse {
-		try {
-			$message = $this->mailManager->getMessage($this->currentUserId, $id);
-			$mailbox = $this->mailManager->getMailbox($this->currentUserId, $message->getMailboxId());
-			$account = $this->accountService->find($this->currentUserId, $mailbox->getAccountId());
-		} catch (DoesNotExistException $e) {
-			return new JSONResponse([], Http::STATUS_FORBIDDEN);
-		}
-
-		if ($message->getFlagMdnsent()) {
-			return new JSONResponse([], Http::STATUS_PRECONDITION_FAILED);
-		}
-
-		try {
-			$this->mailTransmission->sendMdn($account, $mailbox, $message);
-			$this->mailManager->flagMessage($account, $mailbox->getName(), $message->getUid(), 'mdnsent', true);
-		} catch (ServiceException $ex) {
-			$this->logger->error('Sending mdn failed: ' . $ex->getMessage());
-			throw $ex;
-		}
-
-		return new JSONResponse();
-	}
-
-	/**
-	 * @NoAdminRequired
 	 * @NoCSRFRequired
 	 * @TrapError
 	 *
@@ -426,7 +352,7 @@ class MessagesController extends Controller {
 	 *
 	 * @throws ClientException
 	 */
-	public function getHtmlBody(int $id, bool $plain = false): Response {
+	public function getHtmlBody(int $id, bool $plain=false): Response {
 		try {
 			try {
 				$message = $this->mailManager->getMessage($this->currentUserId, $id);
@@ -524,43 +450,6 @@ class MessagesController extends Controller {
 			$attachment->getName(),
 			$attachment->getType()
 		);
-	}
-
-	/**
-	 * @NoAdminRequired
-	 * @NoCSRFRequired
-	 * @TrapError
-	 *
-	 * @param int $id the message id
-	 * @param string $attachmentId
-	 *
-	 * @return ZipResponse|JSONResponse
-	 *
-	 * @throws ClientException
-	 * @throws ServiceException
-	 * @throws DoesNotExistException
-	 */
-	public function downloadAttachments(int $id): Response {
-		try {
-			$message = $this->mailManager->getMessage($this->currentUserId, $id);
-			$mailbox = $this->mailManager->getMailbox($this->currentUserId, $message->getMailboxId());
-			$account = $this->accountService->find($this->currentUserId, $mailbox->getAccountId());
-		} catch (DoesNotExistException $e) {
-			return new JSONResponse([], Http::STATUS_FORBIDDEN);
-		}
-
-		$attachments = $this->mailManager->getMailAttachments($account, $mailbox, $message);
-		$zip = new ZipResponse($this->request, 'attachments');
-
-		foreach ($attachments as $attachment) {
-			$fileName = $attachment['name'];
-			$fh = fopen("php://temp", 'r+');
-			fputs($fh, $attachment['content']);
-			$size = (int)$attachment['size'];
-			rewind($fh);
-			$zip->addResource($fh, $fileName, $size);
-		}
-		return $zip;
 	}
 
 	/**

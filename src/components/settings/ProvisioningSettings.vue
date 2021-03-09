@@ -152,7 +152,7 @@
 								type="text">
 						</label>
 						<div class="flex-row">
-							<label for="mail-provision-smtp-host">
+							<label for="mail-provision-imap-host">
 								{{ t('mail', 'Host') }}
 								<br>
 								<input
@@ -207,89 +207,6 @@
 								class="button"
 								for="mail-provision-smtp-user-tls"
 								:class="{primary: smtpSslMode === 'tls'}">{{ t('mail', 'STARTTLS') }}</label>
-						</div>
-					</div>
-				</div>
-				<div class="settings-group">
-					<div class="group-title">
-						{{ t('mail', 'Sieve') }}
-					</div>
-					<div class="group-inputs">
-						<div>
-							<input id="mail-provision-sieve-enabled"
-								v-model="sieveEnabled"
-								type="checkbox"
-								class="checkbox">
-							<label for="mail-provision-sieve-enabled">
-								{{ t('mail', 'Enable sieve integration') }}
-							</label>
-						</div>
-						<label for="mail-provision-sieve-user">
-							{{ t('mail', 'User') }}*
-							<br>
-							<input
-								id="mail-provision-sieve-user"
-								v-model="sieveUser"
-								:disabled="loading"
-								name="email"
-								type="text">
-						</label>
-						<div class="flex-row">
-							<label for="mail-provision-sieve-host">
-								{{ t('mail', 'Host') }}
-								<br>
-								<input
-									id="mail-provision-sieve-host"
-									v-model="sieveHost"
-									:disabled="loading"
-									name="email"
-									type="text">
-							</label>
-							<label for="mail-provision-sieve-port">
-								{{ t('mail', 'Port') }}
-								<br>
-								<input
-									id="mail-provision-sieve-port"
-									v-model="sievePort"
-									:disabled="loading"
-									name="email"
-									type="number">
-							</label>
-						</div>
-						<div class="flex-row">
-							<input
-								id="mail-provision-sieve-user-none"
-								v-model="sieveSslMode"
-								type="radio"
-								name="man-sieve-sec"
-								:disabled="loading"
-								value="none">
-							<label
-								class="button"
-								for="mail-provision-sieve-user-none"
-								:class="{primary: sieveSslMode === 'none'}">{{ t('mail', 'None') }}</label>
-							<input
-								id="mail-provision-sieve-user-ssl"
-								v-model="sieveSslMode"
-								type="radio"
-								name="man-sieve-sec"
-								:disabled="loading"
-								value="ssl">
-							<label
-								class="button"
-								for="mail-provision-sieve-user-ssl"
-								:class="{primary: sieveSslMode === 'ssl'}">{{ t('mail', 'SSL/TLS') }}</label>
-							<input
-								id="mail-provision-sieve-user-tls"
-								v-model="sieveSslMode"
-								type="radio"
-								name="man-sieve-sec"
-								:disabled="loading"
-								value="tls">
-							<label
-								class="button"
-								for="mail-provision-sieve-user-tls"
-								:class="{primary: sieveSslMode === 'tls'}">{{ t('mail', 'STARTTLS') }}</label>
 						</div>
 					</div>
 				</div>
@@ -355,11 +272,6 @@ export default {
 			smtpPort: this.settings.smtpPort || 587,
 			smtpUser: this.settings.smtpUser || '%USERID%domain.com',
 			smtpSslMode: this.settings.smtpSslMode || 'tls',
-			sieveEnabled: this.settings.sieveEnabled,
-			sieveHost: this.settings.sieveHost,
-			sievePort: this.settings.sievePort,
-			sieveSslMode: this.settings.sieveSslMode,
-			sieveUser: this.settings.sieveUser,
 			previewData1: {
 				uid: 'user123',
 				email: '',
@@ -383,11 +295,6 @@ export default {
 				smtpHost: this.smtpHost,
 				smtpPort: this.smtpPort,
 				smtpSslMode: this.smtpSslMode,
-				sieveEnabled: this.sieveEnabled,
-				sieveUser: this.sieveUser,
-				sieveHost: this.sieveHost,
-				sievePort: this.sievePort,
-				sieveSslMode: this.sieveSslMode,
 			}
 		},
 	},
@@ -408,11 +315,6 @@ export default {
 				smtpHost: this.smtpHost,
 				smtpPort: this.smtpPort,
 				smtpSslMode: this.smtpSslMode,
-				sieveEnabled: this.sieveEnabled,
-				sieveUser: this.sieveUser,
-				sieveHost: this.sieveHost,
-				sievePort: this.sievePort,
-				sieveSslMode: this.sieveSslMode,
 			})
 				.then(() => {
 					logger.info('provisioning settings updated')

@@ -29,11 +29,10 @@ import { html } from './util/text'
  * @param {Text} original original
  * @param {object} from from
  * @param {Number} date date
- * @param {boolean} replyOnTop put reply on top?
  * @returns {Text}
  */
-export const buildReplyBody = (original, from, date, replyOnTop = true) => {
-	const startEnd = '<p></p><p></p>'
+export const buildReplyBody = (original, from, date) => {
+	const start = '<p></p><p></p>'
 	const plainBody = '<br>&gt; ' + original.value.replace(/\n/g, '<br>&gt; ')
 	const htmlBody = `<blockquote>${original.value}</blockquote>`
 
@@ -41,24 +40,16 @@ export const buildReplyBody = (original, from, date, replyOnTop = true) => {
 	case 'plain':
 		if (from) {
 			const dateString = moment.unix(date).format('LLL')
-			return replyOnTop
-				? html(`${startEnd}"${from.label}" ${from.email} – ${dateString}` + plainBody)
-				: html(`"${from.label}" ${from.email} – ${dateString}` + plainBody + startEnd)
+			return html(`${start}"${from.label}" ${from.email} – ${dateString}` + plainBody)
 		} else {
-			return replyOnTop
-				? html(`${startEnd}${plainBody}`)
-				: html(`${plainBody}${startEnd}`)
+			return html(`${start}${plainBody}`)
 		}
 	case 'html':
 		if (from) {
 			const dateString = moment.unix(date).format('LLL')
-			return replyOnTop
-				? html(`${startEnd}"${from.label}" ${from.email} – ${dateString}<br>${htmlBody}`)
-				: html(`"${from.label}" ${from.email} – ${dateString}<br>${htmlBody}${startEnd}`)
+			return html(`${start}"${from.label}" ${from.email} – ${dateString}<br>${htmlBody}`)
 		} else {
-			return replyOnTop
-				? html(`${startEnd}${htmlBody}`)
-				: html(`${htmlBody}${startEnd}`)
+			return html(`${start}${htmlBody}`)
 		}
 	}
 

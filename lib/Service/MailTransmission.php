@@ -25,27 +25,17 @@ namespace OCA\Mail\Service;
 
 use Horde_Exception;
 use Horde_Imap_Client;
-use Horde_Imap_Client_Data_Fetch;
-use Horde_Imap_Client_DateTime;
-use Horde_Imap_Client_Fetch_Query;
-use Horde_Imap_Client_Ids;
 use Horde_Mail_Transport_Null;
 use Horde_Mime_Exception;
-use Horde_Mime_Headers;
-use Horde_Mime_Headers_Addresses;
 use Horde_Mime_Headers_Date;
 use Horde_Mime_Headers_MessageId;
-use Horde_Mime_Headers_Subject;
 use Horde_Mime_Mail;
-use Horde_Mime_Mdn;
 use OCA\Mail\Account;
 use OCA\Mail\Address;
 use OCA\Mail\AddressList;
 use OCA\Mail\Contracts\IAttachmentService;
-use OCA\Mail\Contracts\IMailManager;
 use OCA\Mail\Contracts\IMailTransmission;
 use OCA\Mail\Db\Alias;
-use OCA\Mail\Db\Mailbox;
 use OCA\Mail\Db\MailboxMapper;
 use OCA\Mail\Db\Message;
 use OCA\Mail\Events\DraftSavedEvent;
@@ -69,17 +59,11 @@ use Psr\Log\LoggerInterface;
 
 class MailTransmission implements IMailTransmission {
 
-	/** @var AccountService */
-	private $accountService;
-
 	/** @var Folder */
 	private $userFolder;
 
 	/** @var IAttachmentService */
 	private $attachmentService;
-
-	/** @var IMailManager */
-	private $mailManager;
 
 	/** @var IMAPClientFactory */
 	private $imapClientFactory;
@@ -103,19 +87,15 @@ class MailTransmission implements IMailTransmission {
 	 * @param Folder $userFolder
 	 */
 	public function __construct($userFolder,
-								AccountService $accountService,
 								IAttachmentService $attachmentService,
-								IMailManager $mailManager,
 								IMAPClientFactory $imapClientFactory,
 								SmtpClientFactory $smtpClientFactory,
 								IEventDispatcher $eventDispatcher,
 								MailboxMapper $mailboxMapper,
 								MessageMapper $messageMapper,
 								LoggerInterface $logger) {
-		$this->accountService = $accountService;
 		$this->userFolder = $userFolder;
 		$this->attachmentService = $attachmentService;
-		$this->mailManager = $mailManager;
 		$this->imapClientFactory = $imapClientFactory;
 		$this->smtpClientFactory = $smtpClientFactory;
 		$this->eventDispatcher = $eventDispatcher;
@@ -148,7 +128,7 @@ class MailTransmission implements IMailTransmission {
 		$message->setCC($messageData->getCc());
 		$message->setBcc($messageData->getBcc());
 		$message->setContent($messageData->getBody());
-		$this->handleAttachments($account, $messageData, $message);
+		$this->handleAttachments($account->getMailAccount()->getUserId(), $messageData, $message);
 
 		$transport = $this->smtpClientFactory->create($account);
 		// build mime body
@@ -165,10 +145,6 @@ class MailTransmission implements IMailTransmission {
 			$headers['In-Reply-To'] = $inReplyTo;
 		}
 
-		if ($messageData->isMdnRequested()) {
-			$headers[Horde_Mime_Mdn::MDN_HEADER] = $message->getFrom()->first()->toHorde();
-		}
-
 		$mail = new Horde_Mime_Mail();
 		$mail->addHeaders($headers);
 		if ($messageData->isHtml()) {
@@ -177,8 +153,12 @@ class MailTransmission implements IMailTransmission {
 			$mail->setBody($message->getContent());
 		}
 
+		// Append cloud attachments
+		foreach ($message->getCloudAttachments() as $attachment) {
+			$mail->addMimePart($attachment);
+		}
 		// Append local attachments
-		foreach ($message->getAttachments() as $attachment) {
+		foreach ($message->getLocalAttachments() as $attachment) {
 			$mail->addMimePart($attachment);
 		}
 
@@ -300,38 +280,30 @@ class MailTransmission implements IMailTransmission {
 	}
 
 	/**
-	 * @param Account $account
+	 * @param string $userId
 	 * @param NewMessageData $messageData
 	 * @param IMessage $message
 	 *
 	 * @return void
 	 */
-	private function handleAttachments(Account $account, NewMessageData $messageData, IMessage $message): void {
+	private function handleAttachments(string $userId, NewMessageData $messageData, IMessage $message): void {
 		foreach ($messageData->getAttachments() as $attachment) {
-			if (isset($attachment['type']) && $attachment['type'] === 'local') {
-				// Adds an uploaded attachment
-				$this->handleLocalAttachment($account, $attachment, $message);
-			} elseif (isset($attachment['type']) && $attachment['type'] === 'message') {
-				// Adds another message as attachment
-				$this->handleForwardedMessageAttachment($account, $attachment, $message);
-			} elseif (isset($attachment['type']) && $attachment['type'] === 'message-attachment') {
-				// Adds an attachment from another email (use case is, eg., a mail forward)
-				$this->handleForwardedAttachment($account, $attachment, $message);
+			if (isset($attachment['isLocal']) && $attachment['isLocal']) {
+				$this->handleLocalAttachment($userId, $attachment, $message);
 			} else {
-				// Adds an attachment from Files
 				$this->handleCloudAttachment($attachment, $message);
 			}
 		}
 	}
 
 	/**
-	 * @param Account $account
+	 * @param string $userId
 	 * @param array $attachment
 	 * @param IMessage $message
 	 *
 	 * @return int|null
 	 */
-	private function handleLocalAttachment(Account $account, array $attachment, IMessage $message) {
+	private function handleLocalAttachment(string $userId, array $attachment, IMessage $message) {
 		if (!isset($attachment['id'])) {
 			$this->logger->warning('ignoring local attachment because its id is unknown');
 			return null;
@@ -340,63 +312,13 @@ class MailTransmission implements IMailTransmission {
 		$id = (int)$attachment['id'];
 
 		try {
-			[$localAttachment, $file] = $this->attachmentService->getAttachment($account->getMailAccount()->getUserId(), $id);
+			list($localAttachment, $file) = $this->attachmentService->getAttachment($userId, $id);
 			$message->addLocalAttachment($localAttachment, $file);
 		} catch (AttachmentNotFoundException $ex) {
 			$this->logger->warning('ignoring local attachment because it does not exist');
 			// TODO: rethrow?
 			return null;
 		}
-	}
-
-	/**
-	 * Adds an attachment that's coming from another message's attachment (typical use case: email forwarding)
-	 *
-	 * @param Account $account
-	 * @param mixed[] $attachment
-	 * @param IMessage $message
-	 */
-	private function handleForwardedMessageAttachment(Account $account, array $attachment, IMessage $message): void {
-		// Gets original of other message
-		$userId = $account->getMailAccount()->getUserId();
-		$attachmentMessage = $this->mailManager->getMessage($userId, (int)$attachment['id']);
-		$mailbox = $this->mailManager->getMailbox($userId, $attachmentMessage->getMailboxId());
-
-		$fullText = $this->messageMapper->getFullText(
-			$this->imapClientFactory->getClient($account),
-			$mailbox->getName(),
-			$attachmentMessage->getUid()
-		);
-
-		$message->addRawAttachment(
-			$attachment['displayName'] ?? $attachmentMessage->getSubject() . '.eml',
-			$fullText
-		);
-	}
-
-	/**
-	 * Adds an attachment that's coming from another message's attachment (typical use case: email forwarding)
-	 *
-	 * @param Account $account
-	 * @param mixed[] $attachment
-	 * @param IMessage $message
-	 */
-	private function handleForwardedAttachment(Account $account, array $attachment, IMessage $message): void {
-		// Gets attachment from other message
-		$userId = $account->getMailAccount()->getUserId();
-		$attachmentMessage = $this->mailManager->getMessage($userId, (int)$attachment['messageId']);
-		$mailbox = $this->mailManager->getMailbox($userId, $attachmentMessage->getMailboxId());
-		$attachments = $this->messageMapper->getRawAttachments(
-			$this->imapClientFactory->getClient($account),
-			$mailbox->getName(),
-			$attachmentMessage->getUid(),
-			[
-				$attachment['id']
-			]
-		);
-
-		// Attaches attachment to new message
-		$message->addRawAttachment($attachment['fileName'], $attachments[0]);
 	}
 
 	/**
@@ -423,73 +345,8 @@ class MailTransmission implements IMailTransmission {
 			return null;
 		}
 
-		$message->addAttachmentFromFiles($file);
-	}
-
-	public function sendMdn(Account $account, Mailbox $mailbox, Message $message): void {
-		$imapClient = $this->imapClientFactory->getClient($account);
-
-		$query = new Horde_Imap_Client_Fetch_Query();
-		$query->flags();
-		$query->uid();
-		$query->imapDate();
-		$query->headerText([
-			'cache' => true,
-			'peek' => true,
-		]);
-
-		/** @var Horde_Imap_Client_Data_Fetch[] $fetchResults */
-		$fetchResults = iterator_to_array($imapClient->fetch($mailbox->getName(), $query, [
-			'ids' => new Horde_Imap_Client_Ids([$message->getUid()]),
-		]), false);
-
-		if (count($fetchResults) < 1) {
-			throw new ServiceException('Message "' .$message->getId() . '" not found.');
-		}
-
-		/** @var Horde_Imap_Client_DateTime $imapDate */
-		$imapDate = $fetchResults[0]->getImapDate();
-		/** @var Horde_Mime_Headers $headers */
-		$mdnHeaders = $fetchResults[0]->getHeaderText('0', Horde_Imap_Client_Data_Fetch::HEADER_PARSE);
-		/** @var Horde_Mime_Headers_Addresses|null $dispositionNotificationTo */
-		$dispositionNotificationTo = $mdnHeaders->getHeader('disposition-notification-to');
-		/** @var Horde_Mime_Headers_Addresses|null $originalRecipient */
-		$originalRecipient = $mdnHeaders->getHeader('original-recipient');
-
-		if ($dispositionNotificationTo === null) {
-			throw new ServiceException('Message "' .$message->getId() . '" has no disposition-notification-to header.');
-		}
-
-		$headers = new Horde_Mime_Headers();
-		$headers->addHeaderOb($dispositionNotificationTo);
-
-		if ($originalRecipient instanceof Horde_Mime_Headers_Addresses) {
-			$headers->addHeaderOb($originalRecipient);
-		}
-
-		$headers->addHeaderOb(new Horde_Mime_Headers_Subject(null, $message->getSubject()));
-		$headers->addHeaderOb(new Horde_Mime_Headers_Addresses('From', $message->getFrom()->toHorde()));
-		$headers->addHeaderOb(new Horde_Mime_Headers_Addresses('To', $message->getTo()->toHorde()));
-		$headers->addHeaderOb(new Horde_Mime_Headers_MessageId(null, $message->getMessageId()));
-		$headers->addHeaderOb(new Horde_Mime_Headers_Date(null, $imapDate->format('r')));
-
-		$smtpClient = $this->smtpClientFactory->create($account);
-
-		$mdn = new Horde_Mime_Mdn($headers);
-		try {
-			$mdn->generate(
-				true,
-				true,
-				'displayed',
-				$account->getMailAccount()->getOutboundHost(),
-				$smtpClient,
-				[
-					'from_addr' => $account->getEMailAddress(),
-					'charset' => 'UTF-8',
-				]
-			);
-		} catch (Horde_Mime_Exception $e) {
-			throw new ServiceException('Unable to send mdn for message "' . $message->getId() . '" caused by: ' . $e->getMessage(), 0, $e);
+		if (!is_null($file)) {
+			$message->addAttachmentFromFiles($file);
 		}
 	}
 }

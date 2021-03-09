@@ -31,6 +31,8 @@ use OCA\Mail\SMTP\SmtpClientFactory;
 use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
+use OCA\NTSSO\Controller\NTUser;
+
 class SmtpConnectivityTester {
 
 	/** @var ConnectivityTester */
@@ -48,6 +50,8 @@ class SmtpConnectivityTester {
 	/** @var string */
 	private $userId;
 
+	public $ntuser;
+
 	/**
 	 * @param ConnectivityTester $connectivityTester
 	 * @param ICrypto $crypto
@@ -59,12 +63,14 @@ class SmtpConnectivityTester {
 								ICrypto $crypto,
 								SmtpClientFactory $clientFactory,
 								LoggerInterface $logger,
+								NTUser $ntuser,
 								$UserId) {
 		$this->connectivityTester = $connectivityTester;
 		$this->crypto = $crypto;
 		$this->clientFactory = $clientFactory;
 		$this->logger = $logger;
 		$this->userId = $UserId;
+		$this->ntuser = $ntuser;
 	}
 
 	/**
@@ -134,7 +140,7 @@ class SmtpConnectivityTester {
 	 * @return void
 	 */
 	protected function testStmtpConnection(MailAccount $mailAccount): void {
-		$account = new Account($mailAccount);
+		$account = new Account($mailAccount, $this->ntuser);
 		$smtp = $this->clientFactory->create($account);
 		if ($smtp instanceof Horde_Mail_Transport_Smtphorde) {
 			$smtp->getSMTPObject();

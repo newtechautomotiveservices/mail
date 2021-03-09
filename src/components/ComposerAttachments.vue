@@ -47,19 +47,13 @@
 import map from 'lodash/fp/map'
 import trimStart from 'lodash/fp/trimCharsStart'
 import { getRequestToken } from '@nextcloud/auth'
-import { formatFileSize } from '@nextcloud/files'
-import prop from 'lodash/fp/prop'
-import { getFilePickerBuilder, showWarning } from '@nextcloud/dialogs'
-import sum from 'lodash/fp/sum'
-import sumBy from 'lodash/fp/sumBy'
-import { translate as t, translatePlural as n } from '@nextcloud/l10n'
-
+import { translate as t } from '@nextcloud/l10n'
+import { getFilePickerBuilder } from '@nextcloud/dialogs'
 import Vue from 'vue'
 
-import logger from '../logger'
-import { getFileSize } from '../service/FileService'
-import { shareFile } from '../service/FileSharingService'
+import Logger from '../logger'
 import { uploadLocalAttachment } from '../service/AttachmentService'
+import { shareFile } from '../service/FileSharingService'
 
 export default {
 	name: 'ComposerAttachments',
@@ -71,10 +65,6 @@ export default {
 		bus: {
 			type: Object,
 			required: true,
-		},
-		uploadSizeLimit: {
-			type: Number,
-			default: 0,
 		},
 	},
 	data() {
@@ -103,38 +93,21 @@ export default {
 		onAddLocalAttachment() {
 			this.$refs.localAttachments.click()
 		},
-		emitNewAttachments(attachments) {
-			this.$emit('input', this.value.concat(attachments))
+		fileNameToAttachment(name, id) {
+			return {
+				fileName: name,
+				displayName: trimStart('/')(name),
+				id,
+				isLocal: id !== undefined,
+			}
 		},
-		totalSizeOfUpload() {
-			return Object.values(this.value).reduce((acc, upload) => {
-				if (!upload.type === 'local') {
-					// Ignore link shares
-					return acc
-				}
-
-				return acc + upload.size
-			}, 0)
+		emitNewAttachment(attachment) {
+			this.$emit('input', this.value.concat([attachment]))
 		},
 		onLocalAttachmentSelected(e) {
 			this.uploading = true
 
 			Vue.set(this, 'uploads', {})
-
-			const toUpload = sumBy(prop('size'), Object.values(e.target.files))
-			const newTotal = toUpload + this.totalSizeOfUpload()
-			logger.debug('checking upload size limit', {
-				existingUploads: this.totalSizeOfUpload(),
-				toUpload,
-				limit: this.uploadSizeLimit,
-				newTotal,
-			})
-			if (this.uploadSizeLimit && newTotal > this.uploadSizeLimit) {
-				this.showAttachmentFileSizeWarning(e.target.files.length)
-
-				this.uploading = false
-				return
-			}
 
 			const progress = (id) => (prog, uploaded) => {
 				this.uploads[id].uploaded = uploaded
@@ -147,73 +120,38 @@ export default {
 				})
 
 				return uploadLocalAttachment(file, progress(file.name)).then(({ file, id }) => {
-					logger.info('uploaded')
-					this.emitNewAttachments([{
-						fileName: file.name,
-						displayName: trimStart('/', file.name),
-						id,
-						size: file.size,
-						type: 'local',
-					}])
+					Logger.info('uploaded')
+					return this.emitNewAttachment(this.fileNameToAttachment(file.name, id))
 				})
-
-			}, e.target.files)
+			})(e.target.files)
 
 			const done = Promise.all(promises)
-				.catch((error) => logger.error('could not upload all attachments', { error }))
+				.catch((error) => Logger.error('could not upload all attachments', { error }))
 				.then(() => (this.uploading = false))
 
 			this.$emit('upload', done)
 
 			return done
 		},
-		async onAddCloudAttachment() {
-			const picker = getFilePickerBuilder(t('mail', 'Choose a file to add as attachment')).setMultiSelect(true).build()
+		onAddCloudAttachment() {
+			const picker = getFilePickerBuilder(t('mail', 'Choose a file to add as attachment')).build()
 
-			try {
-				const paths = await picker.pick(t('mail', 'Choose a file to add as attachment'))
-				const fileSizes = await Promise.all(paths.map(getFileSize))
-				const newTotal = sum(fileSizes) + this.totalSizeOfUpload()
-
-				if (this.uploadSizeLimit && newTotal > this.uploadSizeLimit) {
-					this.showAttachmentFileSizeWarning(paths.length)
-
-					return
-				}
-
-				this.emitNewAttachments(paths.map(function(name) {
-					return {
-						fileName: name,
-						displayName: trimStart('/', name),
-						type: 'cloud',
-					}
-				}))
-			} catch (error) {
-				logger.error('could not choose a file as attachment', { error })
-			}
+			return picker
+				.pick(t('mail', 'Choose a file to add as attachment'))
+				.then((path) => this.emitNewAttachment(this.fileNameToAttachment(path)))
+				.catch((error) => Logger.error('could not choose a file as attachment', { error }))
 		},
-		async onAddCloudAttachmentLink() {
+		onAddCloudAttachmentLink() {
 			const picker = getFilePickerBuilder(t('mail', 'Choose a file to share as a link')).build()
 
-			try {
-				const path = await picker.pick(t('mail', 'Choose a file to share as a link'))
-				const url = await shareFile(path, getRequestToken())
+			return picker
+				.pick(t('mail', 'Choose a file to share as a link'))
+				.then(async(path) => {
+					const url = await shareFile(path, getRequestToken())
 
-				this.appendToBodyAtCursor(`<a href="${url}">${url}</a>`)
-			} catch (error) {
-				logger.error('could not choose a file as attachment link', { error })
-			}
-		},
-		showAttachmentFileSizeWarning(num) {
-			showWarning(n(
-				'mail',
-				'The attachment exceed the allowed attachments size of {size}. Please share the file via link instead.',
-				'The attachments exceed the allowed attachments size of {size}. Please share the files via link instead.',
-				num,
-				{
-					size: formatFileSize(this.uploadSizeLimit),
-				}
-			))
+					return this.appendToBodyAtCursor(`<a href="${url}">${url}</a>`)
+				})
+				.catch((error) => Logger.error('could not choose a file as attachment link', { error }))
 		},
 		onDelete(attachment) {
 			this.$emit(

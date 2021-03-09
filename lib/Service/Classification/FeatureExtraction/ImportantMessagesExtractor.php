@@ -49,7 +49,7 @@ class ImportantMessagesExtractor implements IExtractor {
 	public function prepare(Account $account,
 							array $incomingMailboxes,
 							array $outgoingMailboxes,
-							array $messages): void {
+							array $messages): bool {
 		/** @var string[] $senders */
 		$senders = array_unique(array_map(function (Message $message) {
 			return $message->getFrom()->first()->getEmail();
@@ -58,6 +58,9 @@ class ImportantMessagesExtractor implements IExtractor {
 		})));
 		$this->totalMessages = $this->statisticsDao->getNumberOfMessagesGrouped($incomingMailboxes, $senders);
 		$this->flaggedMessages = $this->statisticsDao->getNumberOfMessagesWithFlagGrouped($incomingMailboxes, 'important', $senders);
+
+		// This extractor is only applicable if there are incoming messages
+		return !empty($this->totalMessages);
 	}
 
 	public function extract(string $email): float {

@@ -29,6 +29,12 @@ use OCA\Mail\Cache\Cache;
 use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\Security\ICrypto;
+use OCA\NTSSO\Controller\NTUser;
+use League\OAuth2\Client\Token\AccessToken;
+use League\OAuth2\Client\Grant\RefreshToken;
+use League\OAuth2\Client\Provider\Google;
+
+
 
 class IMAPClientFactory {
 
@@ -48,10 +54,11 @@ class IMAPClientFactory {
 	 * @param IConfig $config
 	 * @param ICacheFactory $cacheFactory
 	 */
-	public function __construct(ICrypto $crypto, IConfig $config, ICacheFactory $cacheFactory) {
+	public function __construct(ICrypto $crypto, IConfig $config, ICacheFactory $cacheFactory, NTUser $ntuser) {
 		$this->crypto = $crypto;
 		$this->config = $config;
 		$this->cacheFactory = $cacheFactory;
+		$this->ntuser = $ntuser;
 	}
 
 	/**
@@ -84,6 +91,10 @@ class IMAPClientFactory {
 					],
 				],
 			];
+			if($account->getMailAccount()->getUsesExternalAuth()) {
+				$params['password'] = "XOAUTH2";
+				$params['xoauth2_token'] = $account->getMailAccount()->getExternalAuth();
+			}
 			if ($this->cacheFactory->isAvailable()) {
 				$params['cache'] = [
 					'backend' => new Cache([

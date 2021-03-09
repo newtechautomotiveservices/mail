@@ -198,15 +198,12 @@ class ImapToDbSynchronizer {
 		}
 
 		if ($criteria & Horde_Imap_Client::SYNC_NEWMSGSUIDS) {
-			$logger->debug("Locking mailbox " . $mailbox->getId() . " for new messages sync");
 			$this->mailboxMapper->lockForNewSync($mailbox);
 		}
 		if ($criteria & Horde_Imap_Client::SYNC_FLAGSUIDS) {
-			$logger->debug("Locking mailbox " . $mailbox->getId() . " for changed messages sync");
 			$this->mailboxMapper->lockForChangeSync($mailbox);
 		}
 		if ($criteria & Horde_Imap_Client::SYNC_VANISHEDUIDS) {
-			$logger->debug("Locking mailbox " . $mailbox->getId() . " for vanished messages sync");
 			$this->mailboxMapper->lockForVanishedSync($mailbox);
 		}
 
@@ -238,15 +235,12 @@ class ImapToDbSynchronizer {
 			throw new ServiceException('Sync failed for ' . $account->getId() . ':' . $mailbox->getName() . ': ' . $e->getMessage(), 0, $e);
 		} finally {
 			if ($criteria & Horde_Imap_Client::SYNC_VANISHEDUIDS) {
-				$logger->debug("Unlocking mailbox " . $mailbox->getId() . " from vanished messages sync");
 				$this->mailboxMapper->unlockFromVanishedSync($mailbox);
 			}
 			if ($criteria & Horde_Imap_Client::SYNC_FLAGSUIDS) {
-				$logger->debug("Unlocking mailbox " . $mailbox->getId() . " from changed messages sync");
 				$this->mailboxMapper->unlockFromChangedSync($mailbox);
 			}
 			if ($criteria & Horde_Imap_Client::SYNC_NEWMSGSUIDS) {
-				$logger->debug("Unlocking mailbox " . $mailbox->getId() . " from new messages sync");
 				$this->mailboxMapper->unlockFromNewSync($mailbox);
 			}
 		}
@@ -405,13 +399,7 @@ class ImapToDbSynchronizer {
 			}
 			$perf->step('persist new messages');
 
-			// If a list of UIDs was *provided* (as opposed to loaded from the DB,
-			// we can not assume that all changes were detected, hence this is kinda
-			// a silent sync and we don't update the vanish token until the next full
-			// mailbox sync
-			if ($knownUids === null) {
-				$mailbox->setSyncVanishedToken($client->getSyncToken($mailbox->getName()));
-			}
+			$mailbox->setSyncVanishedToken($client->getSyncToken($mailbox->getName()));
 		}
 		$this->mailboxMapper->update($mailbox);
 		$perf->end();

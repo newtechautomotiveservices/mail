@@ -63,7 +63,7 @@ class TransformCSSBackground extends HTMLPurifier_AttrTransform {
 				return '';
 			}
 
-			[$name, $value] = explode(':', $cssAttribute, 2);
+			list($name, $value) = explode(':', $cssAttribute, 2);
 			if (strpos($name, 'background') !== false &&
 				strpos($value, 'url(') !== false) {
 				// Replace image URL

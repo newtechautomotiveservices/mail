@@ -26,6 +26,7 @@ declare(strict_types=1);
 namespace OCA\Mail\Service\Classification\FeatureExtraction;
 
 use OCA\Mail\Account;
+use function array_filter;
 
 /**
  * Combines a set of DI'ed extractors so they can be used as one class
@@ -34,6 +35,9 @@ class CompositeExtractor {
 
 	/** @var IExtractor[] */
 	private $extractors;
+
+	/** @var IExtractor[] */
+	private $applicableExtractors;
 
 	public function __construct(ImportantMessagesExtractor $ex1,
 								ReadMessagesExtractor $ex2,
@@ -51,14 +55,17 @@ class CompositeExtractor {
 							array $incomingMailboxes,
 							array $outgoingMailboxes,
 							array $messages): void {
-		foreach ($this->extractors as $extractor) {
-			$extractor->prepare($account, $incomingMailboxes, $outgoingMailboxes, $messages);
-		}
+		$this->applicableExtractors = array_filter(
+			$this->extractors,
+			function (IExtractor $extractor) use ($account, $incomingMailboxes, $outgoingMailboxes, $messages) {
+				return $extractor->prepare($account, $incomingMailboxes, $outgoingMailboxes, $messages);
+			}
+		);
 	}
 
 	public function extract(string $email): array {
 		return array_map(function (IExtractor $extractor) use ($email) {
 			return $extractor->extract($email);
-		}, $this->extractors);
+		}, $this->applicableExtractors);
 	}
 }

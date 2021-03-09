@@ -8,23 +8,26 @@
 			"type": "vcs",
 			"url": "https://github.com/kwi-dk/UrlLinker",
 			"branch": "bleeding"
+		},
+		{
+			"type": "vcs",
+			"url": "https://github.com/newtechautomotiveservices/NT-API-Package.git"
 		}
 	],
 	"config": {
 		"platform": {
 			"php": "7.3"
-		},
-		"sort-packages": true
+		}
 	},
 	"require": {
 		"php": ">=7.3",
 		"arthurhoaro/favicon": "^1.2",
-		"bamarni/composer-bin-plugin": "^1.4",
 		"cerdic/css-tidy": "v1.7.3",
 		"christophwurst/kitinerary": "^0.2",
 		"christophwurst/kitinerary-bin": "^0.2",
 		"christophwurst/kitinerary-flatpak": "^0.2",
 		"christophwurst/kitinerary-sys": "^0.1.0",
+		"coenjacobs/mozart": "0.6.0-beta-2",
 		"ezyang/htmlpurifier": "4.13.0",
 		"gravatarphp/gravatar": "^2.0",
 		"kwi/urllinker": "dev-bleeding",
@@ -32,27 +35,35 @@
 		"pear-pear.horde.org/horde_exception": "^2.0.8@stable",
 		"pear-pear.horde.org/horde_imap_client": "^2.29.16@stable",
 		"pear-pear.horde.org/horde_mail": "^2.6.4@stable",
-		"pear-pear.horde.org/horde_managesieve": "^1.0",
 		"pear-pear.horde.org/horde_mime": "^2.11.0@stable",
 		"pear-pear.horde.org/horde_nls": "^2.2.1@stable",
-		"pear-pear.horde.org/horde_smtp": "^1.9.5@stable",
 		"pear-pear.horde.org/horde_stream": "^1.6.3@stable",
-		"pear-pear.horde.org/horde_stringprep": "^1.0",
 		"pear-pear.horde.org/horde_support": "^2.2.0@stable",
 		"pear-pear.horde.org/horde_text_filter": "^2.3.5@stable",
 		"pear-pear.horde.org/horde_text_flowed": "^2.0.3@stable",
 		"pear-pear.horde.org/horde_util": "^2.5.8@stable",
+		"pear-pear.horde.org/horde_smtp": "^1.9.5@stable",
 		"psr/log": "^1",
-		"rubix/ml": "0.2.4"
+		"rubix/ml": "0.2.3",
+		"guzzlehttp/guzzle": "^7.2",
+		"newtech/ntapi": "dev-master",
+		"illuminate/collections": "^8.27",
+		"league/oauth2-google": "^3.0"
 	},
 	"require-dev": {
-		"christophwurst/nextcloud": "v20.0.7",
-		"christophwurst/nextcloud_testing": "0.12.4",
-		"nextcloud/coding-standard": "^0.5.0",
-		"phan/phan": "^4.0",
 		"roave/security-advisories": "dev-master",
-		"vimeo/psalm": "^4.1"
+		"christophwurst/nextcloud": "v20.0.1",
+		"christophwurst/nextcloud_testing": "0.11.0",
+		"nextcloud/coding-standard": "^0.3.0",
+		"phan/phan": "^3.0",
+		"vimeo/psalm": "^4.1",
+		"symfony/var-dumper": "^5.2"
 	},
+	"autoload": {
+        "files": [
+            "autoload/helpers.php"
+        ]
+    },
 	"scripts": {
 		"cs:check": "php-cs-fixer fix --dry-run --diff",
 		"cs:fix": "php-cs-fixer fix",
@@ -61,12 +72,10 @@
 		"psalm": "psalm",
 		"psalm:fix": "psalm --alter --issues=InvalidReturnType,InvalidNullableReturnType,MismatchingDocblockParamType,MismatchingDocblockReturnType,MissingParamType,InvalidFalsableReturnType",
 		"post-install-cmd": [
-			"@composer bin all install --ansi",
 			"\"vendor/bin/mozart\" compose",
 			"composer dump-autoload"
 		],
 		"post-update-cmd": [
-			"@composer bin all update --ansi",
 			"\"vendor/bin/mozart\" compose",
 			"composer dump-autoload"
 		],

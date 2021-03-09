@@ -2,7 +2,6 @@
 composer.phar
 /lib/Vendor
 /vendor/
-/vendor-bin/mozart/vendor
 
 # Mac OS
 .DS_Store
@@ -12,8 +11,6 @@ tests/clover*.xml
 
 # Node.js modules
 node_modules/
-
-/js
 
 # packaged app
 build/artifacts
@@ -34,6 +31,3 @@ coverage/
 tests/.phpunit.result.cache
 
 /.php_cs.cache
-
-# VSCode / VSCodium
-.vscode/

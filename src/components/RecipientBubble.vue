@@ -93,9 +93,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.user-bubble__title {
-	max-width: 30vw;
-}
 .user-bubble-email {
 	margin: 10px;
 }

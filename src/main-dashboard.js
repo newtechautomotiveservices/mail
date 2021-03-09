@@ -2,7 +2,6 @@
  * @copyright Copyright (c) 2020 Julius Härtl <jus@bitgrid.net>
  *
  * @author Julius Härtl <jus@bitgrid.net>
- * @author Richard Steinmetz <richard@steinmetz.cloud>
  *
  * @license GNU AGPL version 3 or any later version
  *
@@ -26,8 +25,7 @@ import { getRequestToken } from '@nextcloud/auth'
 import { generateFilePath } from '@nextcloud/router'
 
 import Nextcloud from './mixins/Nextcloud'
-import DashboardImportant from './views/DashboardImportant'
-import DashboardUnread from './views/DashboardUnread'
+import Dashboard from './views/Dashboard'
 
 // eslint-disable-next-line camelcase
 __webpack_nonce__ = btoa(getRequestToken())
@@ -40,12 +38,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	const register = OCA?.Dashboard?.register || (() => {})
 
 	register('mail', (el) => {
-		const View = Vue.extend(DashboardImportant)
-		new View().$mount(el)
-	})
-
-	register('mail-unread', (el) => {
-		const View = Vue.extend(DashboardUnread)
+		const View = Vue.extend(Dashboard)
 		new View().$mount(el)
 	})
 })

@@ -114,11 +114,11 @@ class MailSearch implements IMailSearch {
 		}
 		// In flagged we don't want anything but flagged messages
 		if ($mailbox->isSpecialUse(Horde_Imap_Client::SPECIALUSE_FLAGGED)) {
-			$query->addFlag(Flag::is(Flag::FLAGGED));
+			$query->addFlag(Horde_Imap_Client::FLAG_FLAGGED);
 		}
 		// Don't show deleted messages except for trash folders
 		if (!$mailbox->isSpecialUse(Horde_Imap_Client::SPECIALUSE_TRASH)) {
-			$query->addFlag(Flag::not(Flag::DELETED));
+			$query->addFlag(Horde_Imap_Client::FLAG_DELETED, false);
 		}
 
 		return $this->previewEnhancer->process(

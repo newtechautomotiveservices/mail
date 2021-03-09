@@ -100,12 +100,7 @@ class Manager {
 									string $smtpUser,
 									string $smtpHost,
 									int $smtpPort,
-									string $smtpSslMode,
-									bool $sieveEnabled,
-									string $sieveUser,
-									string $sieveHost,
-									int $sievePort,
-									string $sieveSslMode): void {
+									string $smtpSslMode): void {
 		$config = $this->configMapper->save(new Config([
 			'active' => true,
 			'email' => $email,
@@ -117,11 +112,6 @@ class Manager {
 			'smtpHost' => $smtpHost,
 			'smtpPort' => $smtpPort,
 			'smtpSslMode' => $smtpSslMode,
-			'sieveEnabled' => $sieveEnabled,
-			'sieveUser' => $sieveUser,
-			'sieveHost' => $sieveHost,
-			'sievePort' => $sievePort,
-			'sieveSslMode' => $sieveSslMode,
 		]));
 
 		$this->provision($config);
@@ -129,7 +119,10 @@ class Manager {
 
 	private function updateAccount(IUser $user, MailAccount $account, Config $config): MailAccount {
 		$account->setEmail($config->buildEmail($user));
-		$account->setName($user->getDisplayName());
+		if ($user->getDisplayName() !== $user->getUID()) {
+			// Only set if it's something meaningful
+			$account->setName($user->getDisplayName());
+		}
 		$account->setInboundUser($config->buildImapUser($user));
 		$account->setInboundHost($config->getImapHost());
 		$account->setInboundPort($config->getImapPort());
@@ -138,19 +131,6 @@ class Manager {
 		$account->setOutboundHost($config->getSmtpHost());
 		$account->setOutboundPort($config->getSmtpPort());
 		$account->setOutboundSslMode($config->getSmtpSslMode());
-		$account->setSieveEnabled($config->getSieveEnabled());
-
-		if ($config->getSieveEnabled()) {
-			$account->setSieveUser($config->buildSieveUser($user));
-			$account->setSieveHost($config->getSieveHost());
-			$account->setSievePort($config->getSievePort());
-			$account->setSieveSslMode($config->getSieveSslMode());
-		} else {
-			$account->setSieveUser(null);
-			$account->setSieveHost(null);
-			$account->setSievePort(null);
-			$account->setSieveSslMode(null);
-		}
 
 		return $account;
 	}

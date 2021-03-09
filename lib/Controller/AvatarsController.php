@@ -30,6 +30,9 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\Response;
+use OCA\Mail\Service\NewtechIntegration;
+use OCA\NTSSO\Controller\NTUser;
+use OCP\IConfig;
 use OCP\IRequest;
 
 class AvatarsController extends Controller {
@@ -40,14 +43,24 @@ class AvatarsController extends Controller {
 	/** @var string */
 	private $uid;
 
+	/** @var newtechIntegration */
+	private $newtechIntegration;
+
+	/** @var NTUser */
+	private $user;
+
 	public function __construct(string $appName,
 								IRequest $request,
 								IAvatarService $avatarService,
-								string $UserId) {
+								string $UserId,
+								IConfig $config,
+								NTUser $user) {
 		parent::__construct($appName, $request);
 
 		$this->avatarService = $avatarService;
 		$this->uid = $UserId;
+		$this->user = $user;
+		$this->newtechIntegration = new NewtechIntegration($user->getStore()->store_number, (string)$user->getEntityKey(), $config);
 	}
 
 	/**
@@ -67,14 +80,19 @@ class AvatarsController extends Controller {
 			return new JSONResponse([], Http::STATUS_BAD_REQUEST);
 		}
 
-		$avatar = $this->avatarService->getAvatar($email, $this->uid);
+		$avatar = $this->newtechIntegration->findCustomerContactPictureByEmail($email);
+
+		if (is_null($avatar)) {
+			$avatar = $this->avatarService->getAvatar($email, $this->uid);
+		}
+
 		if (is_null($avatar)) {
 			// No avatar found
 			$response = new JSONResponse([], Http::STATUS_NOT_FOUND);
 
 			// Debounce this a bit
 			// (cache for one day)
-			$response->cacheFor(24 * 60 * 60);
+			$response->cacheFor(24*60*60);
 
 			return $response;
 		}
@@ -100,16 +118,26 @@ class AvatarsController extends Controller {
 			return new JSONResponse([], Http::STATUS_BAD_REQUEST);
 		}
 
-		$imageData = $this->avatarService->getAvatarImage($email, $this->uid);
-		[$avatar, $image] = $imageData;
+		$imageData = $this->newtechIntegration->findCustomerContactPictureByEmail($email);
 
-		if (is_null($imageData) || !$avatar->isExternal()) {
-			// This could happen if the cache invalidated meanwhile
-			return $this->noAvatarFoundResponse();
+		if (is_null($imageData)) {
+			$imageData = $this->avatarService->getAvatarImage($email, $this->uid);
+			list($avatar, $image) = $imageData;
+
+			if (is_null($imageData) || !$avatar->isExternal()) {
+				// This could happen if the cache invalidated meanwhile
+				return $this->noAvatarFoundResponse();
+			}
+
+			$resp = new AvatarDownloadResponse($image);
+			$resp->addHeader('Content-Type', $avatar->getMime());
+		} else {
+			$avatar = $imageData;
+			$image = file_get_contents($imageData['url']);
+
+			$resp = new AvatarDownloadResponse($image);
+			$resp->addHeader('Content-Type', 'image/jpeg');
 		}
-
-		$resp = new AvatarDownloadResponse($image);
-		$resp->addHeader('Content-Type', $avatar->getMime());
 
 		// Let the browser cache this for a week
 		$resp->cacheFor(7 * 24 * 60 * 60);

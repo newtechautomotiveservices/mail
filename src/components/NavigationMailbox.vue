@@ -24,11 +24,6 @@
 		v-if="visible"
 		:id="genId(mailbox)"
 		:key="genId(mailbox)"
-		v-droppable-mailbox="{
-			mailboxId: mailbox.databaseId,
-			accountId: mailbox.accountId,
-			isValidDropTarget,
-		}"
 		:allow-collapse="true"
 		:menu-open.sync="menuOpen"
 		:force-menu="true"
@@ -59,7 +54,7 @@
 					v-if="!editing && top && !account.isUnified && mailbox.specialRole !== 'flagged'"
 					icon="icon-folder"
 					@click="openCreateMailbox">
-					{{ t('mail', 'Add submailbox') }}
+					{{ t('mail', 'Add subfolder') }}
 				</ActionButton>
 				<ActionInput v-if="editing" icon="icon-folder" @submit.prevent.stop="createMailbox" />
 				<ActionButton
@@ -109,7 +104,7 @@
 				</ActionCheckbox>
 
 				<ActionButton v-if="!account.isUnified && !mailbox.specialRole && !hasSubMailboxes" icon="icon-delete" @click="deleteMailbox">
-					{{ t('mail', 'Delete mailbox') }}
+					{{ t('mail', 'Delete folder') }}
 				</ActionButton>
 			</template>
 		</template>
@@ -147,8 +142,6 @@ import logger from '../logger'
 import { translatePlural as n } from '@nextcloud/l10n'
 import { translate as translateMailboxName } from '../i18n/MailboxTranslator'
 import { showInfo } from '@nextcloud/dialogs'
-import { DroppableMailboxDirective as droppableMailbox } from '../directives/drag-and-drop/droppable-mailbox'
-import dragEventBus from '../directives/drag-and-drop/util/dragEventBus'
 
 export default {
 	name: 'NavigationMailbox',
@@ -160,9 +153,6 @@ export default {
 		ActionCheckbox,
 		ActionInput,
 		MoveMailboxModal,
-	},
-	directives: {
-		droppableMailbox,
 	},
 	props: {
 		account: {
@@ -199,13 +189,14 @@ export default {
 			renameInput: false,
 			mailboxName: this.mailbox.displayName,
 			showMoveModal: false,
+
 		}
 	},
 	computed: {
 		visible() {
 			return (
-				(this.account.showSubscribedOnly === false
-				|| (this.mailbox.attributes && this.mailbox.attributes.includes('\\subscribed'))) && this.isUnifiedButOnlyInbox
+				this.account.showSubscribedOnly === false
+				|| (this.mailbox.attributes && this.mailbox.attributes.includes('\\subscribed'))
 			)
 		},
 		notInbox() {
@@ -271,40 +262,6 @@ export default {
 		isSubscribed() {
 			return this.mailbox.attributes && this.mailbox.attributes.includes('\\subscribed')
 		},
-		isDroppableSpecialMailbox() {
-			if (this.filter === 'starred') {
-				return false
-			}
-			return ![
-				this.account.draftsMailboxId,
-				this.account.sentMailboxId,
-			].includes(this.mailbox.databaseId)
-		},
-		isActive() {
-			return this.$route.params.mailboxId === this.mailbox.databaseId
-		},
-		isValidDropTarget() {
-			if (this.isActive) {
-				return false
-			}
-			return this.isDroppableSpecialMailbox || (!this.mailbox.specialRole && !this.account.isUnified)
-		},
-		isUnifiedButOnlyInbox() {
-			if (!this.mailbox.isUnified) {
-				return true
-			}
-			return this.mailbox.specialUse.includes('inbox') && this.$store.getters.accounts.length > 2
-		},
-	},
-	mounted() {
-		dragEventBus.$on('dragStart', this.onDragStart)
-		dragEventBus.$on('dragEnd', this.onDragEnd)
-		dragEventBus.$on('envelopesMoved', this.onEnvelopesMoved)
-	},
-	beforeDestroy() {
-		dragEventBus.$off('dragStart', this.onDragStart)
-		dragEventBus.$off('dragEnd', this.onDragEnd)
-		dragEventBus.$off('envelopesMoved', this.onEnvelopesMoved)
 	},
 	methods: {
 		/**
@@ -434,11 +391,11 @@ export default {
 			const id = this.mailbox.databaseId
 			logger.info('delete mailbox', { mailbox: this.mailbox })
 			OC.dialogs.confirmDestructive(
-				t('mail', 'The mailbox and all messages in it will be deleted.'),
-				t('mail', 'Delete mailbox'),
+				t('mail', 'The folder and all messages in it will be deleted.'),
+				t('mail', 'Delete folder'),
 				{
 					type: OC.dialogs.YES_NO_BUTTONS,
-					confirm: t('mail', 'Delete mailbox {name}', { name: this.mailbox.displayName }),
+					confirm: t('mail', 'Delete folder {name}', { name: this.mailbox.displayName }),
 					confirmClasses: 'error',
 					cancel: t('mail', 'Cancel'),
 				},
@@ -486,38 +443,6 @@ export default {
 		},
 		onCloseMoveModal() {
 			this.showMoveModal = false
-		},
-		onDragStart({ accountId }) {
-			if (accountId !== this.mailbox.accountId) {
-				return
-			}
-			this.$store.commit('expandAccount', accountId)
-			this.showSubMailboxes = true
-		},
-		onDragEnd({ accountId }) {
-			if (accountId !== this.mailbox.accountId) {
-				return
-			}
-			this.showSubMailboxes = false
-		},
-		onEnvelopesMoved({ mailboxId, movedEnvelopes }) {
-			if (this.mailbox.databaseId !== mailboxId) {
-				return
-			}
-			const openedMessageHasBeenMoved = movedEnvelopes.find((movedEnvelope) => {
-				return movedEnvelope.envelopeId === this.$route.params.threadId
-			})
-			// navigate to the mailbox root
-			// if the currently displayed message has been moved
-			if (this.$route.name === 'message' && openedMessageHasBeenMoved) {
-				this.$router.push({
-					name: 'mailbox',
-					params: {
-						mailboxId: this.$route.params.mailboxId,
-						filter: this.$route.params?.filter,
-					},
-				})
-			}
 		},
 	},
 }

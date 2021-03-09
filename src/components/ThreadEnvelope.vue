@@ -55,19 +55,103 @@
 			<div class="right">
 				<Moment class="timestamp" :timestamp="envelope.dateInt" />
 				<router-link
-					:to="hasMultipleRecipients ? replyAllLink : replyOneLink"
+					:to="hasMultipleRecipients ? replyAll : replyMessage"
 					:class="{
 						'icon-reply-all-white': hasMultipleRecipients,
 						'icon-reply-white': !hasMultipleRecipients,
 						primary: expanded,
 					}"
 					class="button">
-					<span class="action-label"> {{ t('mail', 'Reply') }}</span>
+					{{ t('mail', 'Reply') }}
 				</router-link>
-				<MenuEnvelope class="app-content-list-item-menu"
-					:envelope="envelope"
-					:with-select="false"
-					:with-show-source="true" />
+				<Actions class="app-content-list-item-menu" menu-align="right">
+					<ActionButton v-if="hasMultipleRecipients"
+						icon="icon-reply"
+						:close-after-click="true"
+						@click="replyMessage">
+						{{ t('mail', 'Reply to sender only') }}
+					</ActionButton>
+					<ActionButton icon="icon-forward"
+						:close-after-click="true"
+						@click="forwardMessage">
+						{{ t('mail', 'Forward') }}
+					</ActionButton>
+					<ActionButton icon="icon-important"
+						:close-after-click="true"
+						@click.prevent="onToggleImportant">
+						{{
+							envelope.flags.important ? t('mail', 'Mark unimportant') : t('mail', 'Mark important')
+						}}
+					</ActionButton>
+					<ActionButton icon="icon-starred"
+						:close-after-click="true"
+						click.prevent="onToggleFlagged">
+						{{
+							envelope.flags.flagged ? t('mail', 'Mark unfavorite') : t('mail', 'Mark favorite')
+						}}
+					</ActionButton>
+					<ActionButton icon="icon-mail"
+						:close-after-click="true"
+						@click.prevent="onToggleSeen">
+						{{ envelope.flags.seen ? t('mail', 'Mark unread') : t('mail', 'Mark read') }}
+					</ActionButton>
+
+					<ActionButton icon="icon-junk"
+						:close-after-click="true"
+						@click.prevent="onToggleJunk">
+						{{ envelope.flags.junk ? t('mail', 'Mark not spam') : t('mail', 'Mark as spam') }}
+					</ActionButton>
+					<ActionButton
+						:icon="sourceLoading ? 'icon-loading-small' : 'icon-details'"
+						:disabled="sourceLoading"
+						:close-after-click="true"
+						@click.prevent="onShowSource">
+						{{ t('mail', 'View source') }}
+					</ActionButton>
+					<ActionRouter icon="icon-add"
+						:to="{
+							name: 'message',
+							params: {
+								mailboxId: $route.params.mailboxId,
+								threadId: 'asNew',
+								filter: $route.params.filter,
+							},
+							query: {
+								messageId: envelope.databaseId,
+							},
+						}">
+						{{ t('mail', 'Edit as new message') }}
+					</ActionRouter>
+					<ActionLink v-if="debug"
+						icon="icon-download"
+						:download="threadingFileName"
+						:href="threadingFile"
+						:close-after-click="true">
+						{{ t('mail', 'Download thread data for debugging') }}
+					</ActionLink>
+					<ActionButton icon="icon-external" :close-after-click="true" @click.prevent="onOpenMoveModal">
+						{{ t('mail', 'Move') }}
+					</ActionButton>
+					<ActionButton icon="icon-delete"
+						:close-after-click="true"
+						@click.prevent="onDelete">
+						{{ t('mail', 'Delete') }}
+					</ActionButton>
+				</Actions>
+				<Modal v-if="showSource" class="source-modal" @close="onCloseSource">
+					<div class="source-modal-content">
+						<div class="section">
+							<h2>{{ t('mail', 'Message source') }}</h2>
+							<pre class="message-source">{{ rawMessage }}</pre>
+						</div>
+					</div>
+				</Modal>
+				<MoveModal
+					v-if="showMoveModal"
+					:account="account"
+					:envelopes="[envelope]"
+					@move="onMove"
+					@close="onCloseMoveModal" />
 			</div>
 		</div>
 		<Loading v-if="loading" />
@@ -78,30 +162,46 @@
 		<Error v-else-if="error"
 			:error="error && error.message ? error.message : t('mail', 'Not found')"
 			:message="errorMessage"
-			:data="error"
-			role="alert" />
+			:data="error" />
 	</div>
 </template>
 <script>
+import Actions from '@nextcloud/vue/dist/Components/Actions'
+import ActionButton from '@nextcloud/vue/dist/Components/ActionButton'
+import ActionLink from '@nextcloud/vue/dist/Components/ActionLink'
+import ActionRouter from '@nextcloud/vue/dist/Components/ActionRouter'
+import axios from '@nextcloud/axios'
 import Error from './Error'
 import Loading from './Loading'
 import logger from '../logger'
 import Message from './Message'
-import MenuEnvelope from './MenuEnvelope'
 import Moment from './Moment'
 import Avatar from './Avatar'
-import importantSvg from '../../img/important.svg'
+import MoveModal from './MoveModal'
 import { buildRecipients as buildReplyRecipients } from '../ReplyBuilder'
+import { generateUrl } from '@nextcloud/router'
+import Modal from '@nextcloud/vue/dist/Components/Modal'
+import { Base64 } from 'js-base64'
+import importantSvg from '../../img/important.svg'
+import { matchError } from '../errors/match'
+import { showError } from '@nextcloud/dialogs'
+import NoTrashMailboxConfiguredError
+	from '../errors/NoTrashMailboxConfiguredError'
 
 export default {
 	name: 'ThreadEnvelope',
 	components: {
+		Actions,
+		ActionButton,
+		ActionLink,
+		ActionRouter,
 		Error,
 		Loading,
-		MenuEnvelope,
 		Moment,
 		Message,
+		Modal,
 		Avatar,
+		MoveModal,
 	},
 	props: {
 		envelope: {
@@ -129,16 +229,41 @@ export default {
 	},
 	data() {
 		return {
+			debug: window?.OC?.debug || false,
 			loading: false,
 			error: undefined,
 			message: undefined,
+			rawMessage: '',
+			sourceLoading: false,
+			showSource: false,
+			showMoveModal: false,
 			importantSvg,
-			seenTimer: undefined,
 		}
 	},
 	computed: {
 		account() {
 			return this.$store.getters.getAccount(this.envelope.accountId)
+		},
+		threadingFile() {
+			return `data:text/plain;base64,${Base64.encode(JSON.stringify({
+				subject: this.envelope.subject,
+				messageId: this.envelope.messageId,
+				inReplyTo: this.envelope.inReplyTo,
+				references: this.envelope.references,
+				threadRootId: this.envelope.threadRootId,
+			}, null, 2))}`
+		},
+		threadingFileName() {
+			return `${this.envelope.databaseId}.json`
+		},
+		route() {
+			return {
+				name: 'message',
+				params: {
+					mailboxId: this.mailboxId || this.envelope.mailboxId,
+					threadId: this.envelope.databaseId,
+				},
+			}
 		},
 		hasMultipleRecipients() {
 			if (!this.account) {
@@ -152,7 +277,7 @@ export default {
 			})
 			return recipients.to.concat(recipients.cc).length > 1
 		},
-		replyOneLink() {
+		replyMessage() {
 			return {
 				name: 'message',
 				params: {
@@ -161,11 +286,11 @@ export default {
 					filter: this.$route.params.filter ? this.$route.params.filter : undefined,
 				},
 				query: {
-					messageId: this.envelope.databaseId,
+					messageId: this.$route.params.threadId,
 				},
 			}
 		},
-		replyAllLink() {
+		replyAll() {
 			return {
 				name: 'message',
 				params: {
@@ -174,16 +299,7 @@ export default {
 					filter: this.$route.params.filter ? this.$route.params.filter : undefined,
 				},
 				query: {
-					messageId: this.envelope.databaseId,
-				},
-			}
-		},
-		route() {
-			return {
-				name: 'message',
-				params: {
-					mailboxId: this.mailboxId || this.envelope.mailboxId,
-					threadId: this.envelope.databaseId,
+					messageId: this.$route.params.threadId,
 				},
 			}
 		},
@@ -197,19 +313,9 @@ export default {
 			}
 		},
 	},
-	async mounted() {
+	mounted() {
 		if (this.expanded) {
-			await this.fetchMessage()
-
-			// Only one envelope is expanded at the time of mounting so we can
-			// assume that this is the relevant envelope to be scrolled to.
-			this.$nextTick(() => this.scrollToCurrentEnvelope())
-		}
-	},
-	beforeDestroy() {
-		if (this.seenTimer !== undefined) {
-			logger.info('Navigating away before seenTimer delay, will not mark message as seen/read')
-			clearTimeout(this.seenTimer)
+			this.fetchMessage()
 		}
 	},
 	methods: {
@@ -223,11 +329,7 @@ export default {
 				logger.debug(`message ${this.envelope.databaseId} fetched`, { message })
 
 				if (!this.envelope.flags.seen) {
-					logger.info('Starting timer to mark message as seen/read')
-					this.seenTimer = setTimeout(() => {
-						this.$store.dispatch('toggleEnvelopeSeen', { envelope: this.envelope })
-						this.seenTimer = undefined
-					}, 2000)
+					this.$store.dispatch('toggleEnvelopeSeen', { envelope: this.envelope })
 				}
 
 				this.loading = false
@@ -235,18 +337,76 @@ export default {
 				logger.error('Could not fetch message', { error })
 			}
 		},
-		scrollToCurrentEnvelope() {
-			// Account for global navigation bar and thread header
-			const globalHeader = document.querySelector('#header').clientHeight
-			const threadHeader = document.querySelector('#mail-thread-header').clientHeight
-			const top = this.$el.getBoundingClientRect().top - globalHeader - threadHeader
-			window.scrollTo({ top })
+		forwardMessage() {
+			this.$router.push({
+				name: 'message',
+				params: {
+					mailboxId: this.$route.params.mailboxId,
+					threadId: 'new',
+					filter: this.$route.params.filter ? this.$route.params.filter : undefined,
+				},
+				query: {
+					messageId: this.$route.params.threadId,
+				},
+			})
+		},
+		onToggleSeen() {
+			this.$store.dispatch('toggleEnvelopeSeen', { envelope: this.envelope })
+		},
+		onToggleJunk() {
+			this.$store.dispatch('toggleEnvelopeJunk', this.envelope)
+		},
+		async onDelete() {
+			this.$emit('delete', this.envelope.databaseId)
+			try {
+				await this.$store.dispatch('deleteMessage', {
+					id: this.envelope.databaseId,
+				})
+			} catch (error) {
+				showError(await matchError(error, {
+					[NoTrashMailboxConfiguredError.getName()]() {
+						return t('mail', 'No trash mailbox configured')
+					},
+					default(error) {
+						logger.error('could not delete message', error)
+						return t('mail', 'Could not delete message')
+					},
+				}))
+			}
+		},
+		async onShowSource() {
+			this.sourceLoading = true
+
+			try {
+				const resp = await axios.get(
+					generateUrl('/apps/mail/api/messages/{id}/source', {
+						id: this.envelope.databaseId,
+					})
+				)
+
+				this.rawMessage = resp.data.source
+				this.showSource = true
+			} finally {
+				this.sourceLoading = false
+			}
+		},
+		onCloseSource() {
+			this.showSource = false
 		},
 		onToggleImportant() {
 			this.$store.dispatch('toggleEnvelopeImportant', this.envelope)
 		},
 		onToggleFlagged() {
 			this.$store.dispatch('toggleEnvelopeFlagged', this.envelope)
+		},
+		onOpenMoveModal() {
+			this.showMoveModal = true
+		},
+		onCloseMoveModal() {
+			this.showMoveModal = false
+		},
+		onMove() {
+			this.$emit('move')
 		},
 	},
 }
@@ -317,6 +477,17 @@ export default {
 	.left {
 		flex-grow: 1;
 	}
+	.source-modal {
+		::v-deep .modal-container {
+			height: 800px;
+		}
+
+		.source-modal-content {
+			width: 100%;
+			height: 100%;
+			overflow-y: scroll;
+		}
+	}
 	.icon-important {
 		::v-deep path {
 			fill: #ffcc00;
@@ -345,6 +516,7 @@ export default {
 		margin-top: -2px;
 		margin-left: 27px;
 		cursor: pointer;
+
 	}
 	.left:not(.seen) {
 		font-weight: bold;

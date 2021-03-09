@@ -32,6 +32,7 @@ use OCA\Mail\Contracts\IMailManager;
 use OCA\Mail\Contracts\IUserPreferences;
 use OCA\Mail\Service\AccountService;
 use OCA\Mail\Service\AliasesService;
+use OCA\NTSSO\Controller\NTUser;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\RedirectResponse;
@@ -42,8 +43,17 @@ use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
+use OCA\Mail\Model\NTEmailTemplate;
+use OCA\Mail\SMTP\SmtpClientFactory;
+use League\OAuth2\Client\Token\AccessToken;
+use League\OAuth2\Client\Grant\RefreshToken;
+use League\OAuth2\Client\Provider\Google;
+use OCA\Mail\Db\MailAccount;
+use OCA\Mail\Account;
+use OCP\Security\ICrypto;
 
-class PageController extends Controller {
+class PageController extends Controller
+{
 
 	/** @var IURLGenerator */
 	private $urlGenerator;
@@ -72,21 +82,34 @@ class PageController extends Controller {
 	/** @var IInitialStateService */
 	private $initialStateService;
 
+	/** @var SmtpClientFactory */
+	private $smtpClientFactory;
+
+	/** @var ICrypto */
+	private $crypto;
+
 	/** @var LoggerInterface */
 	private $logger;
 
-	public function __construct(string $appName,
-								IRequest $request,
-								IURLGenerator $urlGenerator,
-								IConfig $config,
-								AccountService $accountService,
-								AliasesService $aliasesService,
-								?string $UserId,
-								IUserSession $userSession,
-								IUserPreferences $preferences,
-								IMailManager $mailManager,
-								IInitialStateService $initialStateService,
-								LoggerInterface $logger) {
+	private $ntuser;
+
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		IURLGenerator $urlGenerator,
+		IConfig $config,
+		AccountService $accountService,
+		AliasesService $aliasesService,
+		?string $UserId,
+		IUserSession $userSession,
+		IUserPreferences $preferences,
+		IMailManager $mailManager,
+		ICrypto $crypto,
+		IInitialStateService $initialStateService,
+		SmtpClientFactory $smtpClientFactory,
+		LoggerInterface $logger,
+		NTUser $user
+	) {
 		parent::__construct($appName, $request);
 
 		$this->urlGenerator = $urlGenerator;
@@ -94,11 +117,14 @@ class PageController extends Controller {
 		$this->accountService = $accountService;
 		$this->aliasesService = $aliasesService;
 		$this->currentUserId = $UserId;
+		$this->crypto = $crypto;
 		$this->userSession = $userSession;
 		$this->preferences = $preferences;
 		$this->mailManager = $mailManager;
 		$this->initialStateService = $initialStateService;
 		$this->logger = $logger;
+		$this->ntuser = $user;
+		$this->smtpClientFactory = $smtpClientFactory;
 	}
 
 	/**
@@ -107,14 +133,15 @@ class PageController extends Controller {
 	 *
 	 * @return TemplateResponse renders the index page
 	 */
-	public function index(): TemplateResponse {
+	public function index(): TemplateResponse
+	{
+		$userProfile = $this->ntuser->getProfile();
 		$mailAccounts = $this->accountService->findByUserId($this->currentUserId);
-
 		$accountsJson = [];
+
 		foreach ($mailAccounts as $mailAccount) {
 			$json = $mailAccount->jsonSerialize();
-			$json['aliases'] = $this->aliasesService->findAll($mailAccount->getId(),
-				$this->currentUserId);
+			$json['aliases'] = $this->aliasesService->findAll($mailAccount->getId(), $this->currentUserId);
 			try {
 				$mailboxes = $this->mailManager->getMailboxes($mailAccount);
 				$json['mailboxes'] = $mailboxes;
@@ -128,20 +155,19 @@ class PageController extends Controller {
 			$accountsJson[] = $json;
 		}
 
-		$accountSettings = $this->preferences->getPreference('account-settings', json_encode([]));
-
 		$user = $this->userSession->getUser();
-		$response = new TemplateResponse($this->appName, 'index',
+		$response = new TemplateResponse(
+			$this->appName,
+			'index',
 			[
 				'debug' => $this->config->getSystemValue('debug', false),
-				'attachment-size-limit' => $this->config->getSystemValue('app.mail.attachment-size-limit', 0),
 				'app-version' => $this->config->getAppValue('mail', 'installed_version'),
 				'accounts' => base64_encode(json_encode($accountsJson)),
 				'external-avatars' => $this->preferences->getPreference('external-avatars', 'true'),
-				'reply-mode' => $this->preferences->getPreference('reply-mode', 'top'),
 				'collect-data' => $this->preferences->getPreference('collect-data', 'true'),
-				'account-settings' => base64_encode($accountSettings),
-			]);
+			]
+		);
+
 		$this->initialStateService->provideInitialState(
 			Application::APP_ID,
 			'prefill_displayName',
@@ -154,9 +180,20 @@ class PageController extends Controller {
 		);
 
 		$csp = new ContentSecurityPolicy();
+		$csp->addAllowedScriptDomain('*');
+		$csp->addAllowedStyleDomain('*');
+		$csp->addAllowedFontDomain('*');
+		$csp->addAllowedImageDomain('*');
+		$csp->addAllowedConnectDomain('*');
+		$csp->addAllowedMediaDomain('*');
+		$csp->addAllowedObjectDomain('*');
+		$csp->addAllowedObjectDomain('*');
 		$csp->addAllowedFrameDomain('\'self\'');
+		$csp->addAllowedChildSrcDomain('*');
+		$csp->allowInlineScript(true);
+		$csp->allowInlineStyle(true);
+		$csp->allowEvalScript(true);
 		$response->setContentSecurityPolicy($csp);
-
 		return $response;
 	}
 
@@ -166,7 +203,8 @@ class PageController extends Controller {
 	 *
 	 * @return TemplateResponse
 	 */
-	public function setup(): TemplateResponse {
+	public function setup(): TemplateResponse
+	{
 		return $this->index();
 	}
 
@@ -176,7 +214,8 @@ class PageController extends Controller {
 	 *
 	 * @return TemplateResponse
 	 */
-	public function mailbox(int $id): TemplateResponse {
+	public function accountSettings(int $id): TemplateResponse
+	{
 		return $this->index();
 	}
 
@@ -186,7 +225,8 @@ class PageController extends Controller {
 	 *
 	 * @return TemplateResponse
 	 */
-	public function thread(int $mailboxId, int $id): TemplateResponse {
+	public function mailbox(int $id): TemplateResponse
+	{
 		return $this->index();
 	}
 
@@ -196,7 +236,8 @@ class PageController extends Controller {
 	 *
 	 * @return TemplateResponse
 	 */
-	public function draft(int $mailboxId, int $draftId): TemplateResponse {
+	public function thread(int $mailboxId, int $id): TemplateResponse
+	{
 		return $this->index();
 	}
 
@@ -208,7 +249,8 @@ class PageController extends Controller {
 	 *
 	 * @return RedirectResponse
 	 */
-	public function compose(string $uri): RedirectResponse {
+	public function compose(string $uri): RedirectResponse
+	{
 		$parts = parse_url($uri);
 		$params = ['to' => $parts['path']];
 		if (isset($parts['query'])) {
@@ -219,21 +261,16 @@ class PageController extends Controller {
 			}
 		}
 
-		array_walk($params,
+		array_walk(
+			$params,
 			function (&$value, $key) {
 				$value = "$key=" . urlencode($value);
-			});
-		$name = '?' . implode('&', $params);
-		$baseUrl = $this->urlGenerator->linkToRoute('mail.page.mailto');
-		return new RedirectResponse($baseUrl . $name);
-	}
-	/**
-	 * @NoAdminRequired
-	 * @NoCSRFRequired
-	 *
-	 * @return TemplateResponse
-	 */
-	public function mailto(): TemplateResponse {
-		return $this->index();
+			}
+		);
+
+		$hashParams = '#mailto?' . implode('&', $params);
+
+		$baseUrl = $this->urlGenerator->linkToRoute("mail.page.index");
+		return new RedirectResponse($baseUrl . $hashParams);
 	}
 }

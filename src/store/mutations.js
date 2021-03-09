@@ -77,7 +77,7 @@ export default {
 		Vue.set(state.preferences, key, value)
 	},
 	addAccount(state, account) {
-		account.collapsed = account.collapsed ?? true
+		account.collapsed = true
 		Vue.set(state.accounts, account.id, account)
 		Vue.set(
 			state,
@@ -109,16 +109,6 @@ export default {
 	},
 	expandAccount(state, accountId) {
 		state.accounts[accountId].collapsed = false
-	},
-	setAccountSetting(state, { accountId, key, value }) {
-		const accountSettings = state.allAccountSettings.find(settings => settings.accountId === accountId)
-		if (accountSettings) {
-			accountSettings[key] = value
-		} else {
-			const newAccountSettings = { accountId }
-			newAccountSettings[key] = value
-			state.allAccountSettings.push(newAccountSettings)
-		}
 	},
 	addMailbox(state, { account, mailbox }) {
 		addMailboxToState(state, account, mailbox)
@@ -221,18 +211,6 @@ export default {
 					list.splice(idx, 1)
 				}
 			})
-
-		// Delete references from other threads
-		for (const [key, env] of Object.entries(state.envelopes)) {
-			if (!env.thread) {
-				continue
-			}
-
-			const thread = env.thread.filter(threadId => threadId !== id)
-			Vue.set(state.envelopes[key], 'thread', thread)
-		}
-
-		Vue.delete(state.envelopes, id)
 	},
 	addMessage(state, { message }) {
 		Vue.set(state.messages, message.databaseId, message)

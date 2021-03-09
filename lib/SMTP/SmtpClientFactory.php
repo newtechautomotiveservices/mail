@@ -83,6 +83,10 @@ class SmtpClientFactory {
 				],
 			],
 		];
+		if($mailAccount->getUsesExternalAuth()) {
+			$params['password'] = "XOAUTH2";
+			$params['xoauth2_token'] = $mailAccount->getExternalAuth();
+		}
 		if ($this->config->getSystemValue('debug', false)) {
 			$params['debug'] = $this->config->getSystemValue('datadirectory') . '/horde_smtp.log';
 		}

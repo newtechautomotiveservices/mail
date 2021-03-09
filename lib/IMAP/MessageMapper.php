@@ -39,7 +39,6 @@ use OCP\AppFramework\Db\DoesNotExistException;
 use Psr\Log\LoggerInterface;
 use function array_filter;
 use function array_map;
-use function in_array;
 use function iterator_to_array;
 use function reset;
 
@@ -201,7 +200,11 @@ class MessageMapper {
 		$query->flags();
 		$query->uid();
 		$query->imapDate();
-		$query->headerText(
+		$query->headers(
+			'references',
+			[
+				'references',
+			],
 			[
 				'cache' => true,
 				'peek' => true,
@@ -362,9 +365,9 @@ class MessageMapper {
 	 * @return string|null
 	 * @throws ServiceException
 	 */
-	public function getFullText(Horde_Imap_Client_Socket $client,
-								string $mailbox,
-								int $uid): ?string {
+	public function getSource(Horde_Imap_Client_Socket $client,
+							  string $mailbox,
+							  int $uid): ?string {
 		$query = new Horde_Imap_Client_Fetch_Query();
 		$query->uid();
 		$query->fullText([
@@ -452,9 +455,8 @@ class MessageMapper {
 	}
 
 	public function getRawAttachments(Horde_Imap_Client_Socket $client,
-									string $mailbox,
-									int $uid,
-									?array $attachmentIds = []): array {
+									  string $mailbox,
+									  int $uid): array {
 		$messageQuery = new Horde_Imap_Client_Fetch_Query();
 		$messageQuery->structure();
 
@@ -467,7 +469,23 @@ class MessageMapper {
 		}
 
 		$structure = $structureResult->getStructure();
-		$partsQuery = $this->buildAttachmentsPartsQuery($structure, $attachmentIds);
+		$partsQuery = new Horde_Imap_Client_Fetch_Query();
+		$partsQuery->fullText();
+		foreach ($structure->partIterator() as $part) {
+			/** @var Horde_Mime_Part $part */
+			if ($part->getMimeId() === '0') {
+				// Ignore message header
+				continue;
+			}
+
+			$partsQuery->bodyPart($part->getMimeId(), [
+				'peek' => true,
+			]);
+			$partsQuery->mimeHeader($part->getMimeId(), [
+				'peek' => true
+			]);
+			$partsQuery->bodyPartSize($part->getMimeId());
+		}
 
 		$parts = $client->fetch($mailbox, $partsQuery, [
 			'ids' => new Horde_Imap_Client_Ids([$uid]),
@@ -497,97 +515,6 @@ class MessageMapper {
 			$attachments[] = $decoded;
 		}
 		return $attachments;
-	}
-
-	/**
-	 * Get Attachments with size, content and name properties
-	 *
-	 * @param Horde_Imap_Client_Socket $client
-	 * @param string $mailbox
-	 * @param integer $uid
-	 * @param array|null $attachmentIds
-	 * @return array[]
-	 */
-	public function getAttachments(Horde_Imap_Client_Socket $client,
-									string $mailbox,
-									int $uid,
-									?array $attachmentIds = []): array {
-		$messageQuery = new Horde_Imap_Client_Fetch_Query();
-		$messageQuery->structure();
-
-		$result = $client->fetch($mailbox, $messageQuery, [
-			'ids' => new Horde_Imap_Client_Ids([$uid]),
-		]);
-
-		if (($structureResult = $result->first()) === null) {
-			throw new DoesNotExistException('Message does not exist');
-		}
-
-		$structure = $structureResult->getStructure();
-		$partsQuery = $this->buildAttachmentsPartsQuery($structure, $attachmentIds);
-
-		$parts = $client->fetch($mailbox, $partsQuery, [
-			'ids' => new Horde_Imap_Client_Ids([$uid]),
-		]);
-		if (($messageData = $parts->first()) === null) {
-			throw new DoesNotExistException('Message does not exist');
-		}
-
-		$attachments = [];
-		foreach ($structure->partIterator() as $key => $part) {
-			/** @var Horde_Mime_Part $part */
-
-			if (!$part->isAttachment()) {
-				continue;
-			}
-
-			$stream = $messageData->getBodyPart($key, true);
-			$mimeHeaders = $messageData->getMimeHeader($key, Horde_Imap_Client_Data_Fetch::HEADER_PARSE);
-			if ($enc = $mimeHeaders->getValue('content-transfer-encoding')) {
-				$part->setTransferEncoding($enc);
-			}
-			$part->setContents($stream, [
-				'usestream' => true,
-			]);
-			$attachments[] = [
-				'content' => $part->getContents(),
-				'name' => $part->getName(),
-				'size' => $part->getSize()
-			];
-		}
-		return $attachments;
-	}
-
-	/**
-	 * Build the parts query for attachments
-	 *
-	 * @param $structure
-	 * @param array $attachmentIds
-	 * @return Horde_Imap_Client_Fetch_Query
-	 */
-	private function buildAttachmentsPartsQuery($structure, array $attachmentIds) : Horde_Imap_Client_Fetch_Query {
-		$partsQuery = new Horde_Imap_Client_Fetch_Query();
-		$partsQuery->fullText();
-		foreach ($structure->partIterator() as $part) {
-			/** @var Horde_Mime_Part $part */
-			if ($part->getMimeId() === '0') {
-				// Ignore message header
-				continue;
-			}
-			if (!empty($attachmentIds) && !in_array($part->getMIMEId(), $attachmentIds, true)) {
-				// We are looking for specific parts only and this is not one of them
-				continue;
-			}
-
-			$partsQuery->bodyPart($part->getMimeId(), [
-				'peek' => true,
-			]);
-			$partsQuery->mimeHeader($part->getMimeId(), [
-				'peek' => true
-			]);
-			$partsQuery->bodyPartSize($part->getMimeId());
-		}
-		return $partsQuery;
 	}
 
 	/**

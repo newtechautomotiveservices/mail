@@ -34,6 +34,7 @@ use OCA\Mail\Exception\ServiceException;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
 use function array_map;
+use OCA\NTSSO\Controller\NTUser;
 
 class AccountService {
 
@@ -53,12 +54,16 @@ class AccountService {
 	/** @var IJobList */
 	private $jobList;
 
+	public $ntuser;
+
 	public function __construct(MailAccountMapper $mapper,
 								AliasesService $aliasesService,
-								IJobList $jobList) {
+								IJobList $jobList,
+								NTUser $ntuser) {
 		$this->mapper = $mapper;
 		$this->aliasesService = $aliasesService;
 		$this->jobList = $jobList;
+		$this->ntuser = $ntuser;
 	}
 
 	/**
@@ -68,7 +73,7 @@ class AccountService {
 	public function findByUserId(string $currentUserId): array {
 		if ($this->accounts === null) {
 			return $this->accounts = array_map(function ($a) {
-				return new Account($a);
+				return new Account($a, $this->ntuser);
 			}, $this->mapper->findByUserId($currentUserId));
 			;
 		}
@@ -83,7 +88,7 @@ class AccountService {
 	 * @throws DoesNotExistException
 	 */
 	public function findById(int $id): Account {
-		return new Account($this->mapper->findById($id));
+		return new Account($this->mapper->findById($id), $this->ntuser);
 	}
 
 	/**
@@ -104,7 +109,7 @@ class AccountService {
 		}
 
 		try {
-			return new Account($this->mapper->find($uid, $id));
+			return new Account($this->mapper->find($uid, $id), $this->ntuser);
 		} catch (DoesNotExistException $e) {
 			throw new ClientException("Account $id does not exist or you don\'t have permission to access it");
 		}
@@ -118,21 +123,6 @@ class AccountService {
 	public function delete(string $currentUserId, int $accountId): void {
 		try {
 			$mailAccount = $this->mapper->find($currentUserId, $accountId);
-		} catch (DoesNotExistException $e) {
-			throw new ClientException("Account $accountId does not exist", 0, $e);
-		}
-		$this->aliasesService->deleteAll($accountId);
-		$this->mapper->delete($mailAccount);
-	}
-
-	/**
-	 * @param int $accountId
-	 *
-	 * @throws ClientException
-	 */
-	public function deleteByAccountId(int $accountId): void {
-		try {
-			$mailAccount = $this->mapper->findById($accountId);
 		} catch (DoesNotExistException $e) {
 			throw new ClientException("Account $accountId does not exist", 0, $e);
 		}

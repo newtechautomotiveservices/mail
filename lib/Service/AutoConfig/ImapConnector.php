@@ -28,6 +28,7 @@ use OCP\Security\ICrypto;
 use OCA\Mail\Account;
 use OCA\Mail\Db\MailAccount;
 use Psr\Log\LoggerInterface;
+use OCA\NTSSO\Controller\NTUser;
 
 class ImapConnector {
 
@@ -42,15 +43,19 @@ class ImapConnector {
 
 	/** @var IMAPClientFactory */
 	private $clientFactory;
+	
+	public $ntuser;
 
 	public function __construct(ICrypto $crypto,
 								LoggerInterface $logger,
 								IMAPClientFactory $clientFactory,
-								?string $UserId) {
+								?string $UserId,
+								NTUser $ntuser) {
 		$this->crypto = $crypto;
 		$this->logger = $logger;
 		$this->userId = $UserId;
 		$this->clientFactory = $clientFactory;
+		$this->ntuser = $ntuser;
 	}
 
 	/**
@@ -83,7 +88,7 @@ class ImapConnector {
 		$password = $this->crypto->encrypt($password);
 		$account->setInboundPassword($password);
 
-		$a = new Account($account);
+		$a = new Account($account, $this->ntuser);
 		$client = $this->clientFactory->getClient($a);
 		$client->login();
 		$this->logger->info("Test-Account-Successful: $this->userId, $host, $port, $user, $encryptionProtocol");

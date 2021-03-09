@@ -6,7 +6,6 @@ declare(strict_types=1);
  * @copyright Copyright (c) 2020 Julius Härtl <jus@bitgrid.net>
  *
  * @author Julius Härtl <jus@bitgrid.net>
- * @author Richard Steinmetz <richard@steinmetz.cloud>
  *
  * @license GNU AGPL version 3 or any later version
  *
@@ -35,10 +34,10 @@ use OCP\IL10N;
 use OCP\IURLGenerator;
 use OCP\Util;
 
-abstract class MailWidget implements IWidget {
+class MailWidget implements IWidget {
 
 	/** @var IL10N */
-	protected $l10n;
+	private $l10n;
 
 	/** @var IURLGenerator */
 	private $urlGenerator;
@@ -62,6 +61,20 @@ abstract class MailWidget implements IWidget {
 		$this->accountService = $accountService;
 		$this->initialState = $initialState;
 		$this->userId = $userId;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function getId(): string {
+		return Application::APP_ID;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function getTitle(): string {
+		return $this->l10n->t('Important mail');
 	}
 
 	/**

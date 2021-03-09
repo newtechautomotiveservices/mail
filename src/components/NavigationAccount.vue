@@ -29,6 +29,7 @@
 		:title="account.emailAddress"
 		:to="firstMailboxRoute"
 		:exact="true"
+		:loading="account.deleted"
 		@update:menuOpen="onMenuToggle">
 		<!-- Color dot -->
 		<AppNavigationIconBullet v-if="bulletColor" slot="icon" :color="bulletColor" />
@@ -38,20 +39,17 @@
 			<ActionText v-if="!account.isUnified" icon="icon-info" :title="t('mail', 'Quota')">
 				{{ quotaText }}
 			</ActionText>
-			<ActionButton icon="icon-settings"
-				:close-after-click="true"
-				@click="showAccountSettings"
-				@shortkey="toggleAccountSettings">
+			<ActionRouter :to="settingsRoute" icon="icon-settings">
 				{{ t('mail', 'Account settings') }}
-			</ActionButton>
+			</ActionRouter>
 			<ActionCheckbox
 				:checked="account.showSubscribedOnly"
 				:disabled="savingShowOnlySubscribed"
 				@update:checked="changeShowSubscribedOnly">
-				{{ t('mail', 'Show only subscribed mailboxes') }}
+				{{ t('mail', 'Show only subscribed folders') }}
 			</ActionCheckbox>
 			<ActionButton v-if="!editing" icon="icon-folder" @click="openCreateMailbox">
-				{{ t('mail', 'Add mailbox') }}
+				{{ t('mail', 'Add folder') }}
 			</ActionButton>
 			<ActionInput v-if="editing" icon="icon-folder" @submit.prevent.stop="createMailbox" />
 			<ActionText v-if="showSaving" icon="icon-loading-small">
@@ -67,15 +65,13 @@
 				{{ t('mail', 'Remove account') }}
 			</ActionButton>
 		</template>
-		<template #extra>
-			<AccountSettings :open.sync="showSettings" :account="account" />
-		</template>
 	</AppNavigationItem>
 </template>
 
 <script>
 import AppNavigationItem from '@nextcloud/vue/dist/Components/AppNavigationItem'
 import AppNavigationIconBullet from '@nextcloud/vue/dist/Components/AppNavigationIconBullet'
+import ActionRouter from '@nextcloud/vue/dist/Components/ActionRouter'
 import ActionButton from '@nextcloud/vue/dist/Components/ActionButton'
 import ActionCheckbox from '@nextcloud/vue/dist/Components/ActionCheckbox'
 import ActionInput from '@nextcloud/vue/dist/Components/ActionInput'
@@ -86,18 +82,17 @@ import { generateUrl } from '@nextcloud/router'
 import { calculateAccountColor } from '../util/AccountColor'
 import logger from '../logger'
 import { fetchQuota } from '../service/AccountService'
-import AccountSettings from './AccountSettings'
 
 export default {
 	name: 'NavigationAccount',
 	components: {
 		AppNavigationItem,
 		AppNavigationIconBullet,
+		ActionRouter,
 		ActionButton,
 		ActionCheckbox,
 		ActionInput,
 		ActionText,
-		AccountSettings,
 	},
 	props: {
 		account: {
@@ -106,7 +101,7 @@ export default {
 		},
 		firstMailbox: {
 			type: Object,
-			default: () => undefined,
+			required: true,
 		},
 		isFirst: {
 			type: Boolean,
@@ -127,23 +122,26 @@ export default {
 			quota: undefined,
 			editing: false,
 			showSaving: false,
-			showSettings: false,
 		}
 	},
 	computed: {
 		visible() {
 			return this.account.isUnified !== true && this.account.visible !== false
 		},
+		settingsRoute() {
+			return {
+				name: 'accountSettings',
+				params: {
+					accountId: this.account.id,
+				},
+			}
+		},
 		firstMailboxRoute() {
-			if (this.firstMailbox) {
-				return {
-					name: 'mailbox',
-					params: {
-						mailboxId: this.firstMailbox.databaseId,
-					},
-				}
-			} else {
-				return ''
+			return {
+				name: 'mailbox',
+				params: {
+					mailboxId: this.firstMailbox.databaseId,
+				},
 			}
 		},
 		id() {
@@ -269,18 +267,6 @@ export default {
 			} else {
 				this.quota = quota
 			}
-		},
-		/**
-		 * Toggles the account settings overview
-		 */
-		toggleAccountSettings() {
-			this.displayAccountSettings = !this.displayAccountSettings
-		},
-		/**
-		 * Shows the account settings
-		 */
-		showAccountSettings() {
-			this.showSettings = true
 		},
 	},
 }

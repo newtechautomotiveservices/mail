@@ -1,16 +1,5 @@
 <template>
-	<router-link
-		v-draggable-envelope="{
-			accountId: data.accountId ? data.accountId : mailbox.accountId,
-			mailboxId: data.mailboxId,
-			envelopeId: data.databaseId,
-			draggableLabel: `${data.subject} (${data.from[0].label})`,
-			selectedEnvelopes,
-		}"
-		class="app-content-list-item"
-		:class="{seen: data.flags.seen, draft, selected: selected}"
-		:to="link"
-		:data-envelope-id="data.databaseId">
+	<router-link class="app-content-list-item" :class="{seen: data.flags.seen, draft, selected: selected}" :to="link">
 		<div
 			v-if="mailbox.isUnified"
 			class="mail-message-account-color"
@@ -44,12 +33,10 @@
 					@click.shift.prevent="onSelectMultiple" />
 			</p>
 		</div>
-		<div class="app-content-list-item-line-one"
-			:title="addresses">
+		<div class="app-content-list-item-line-one" :title="addresses">
 			{{ addresses }}
 		</div>
-		<div class="app-content-list-item-line-two"
-			:title="data.subject">
+		<div class="app-content-list-item-line-two" :title="data.subject">
 			<span v-if="data.flags.answered" class="icon-reply" />
 			<span v-if="data.flags.hasAttachments === true" class="icon-public icon-attachment" />
 			<span v-if="draft" class="draft">
@@ -60,35 +47,102 @@
 		<div class="app-content-list-item-details date">
 			<Moment :timestamp="data.dateInt" />
 		</div>
-		<MenuEnvelope class="app-content-list-item-menu"
-			:envelope="data"
-			:mailbox="mailbox"
-			:is-selected="selected"
-			:with-select="true"
-			:with-show-source="false"
-			@unselect="unselect"
-			@update:selected="toggleSelected" />
+		<Actions class="app-content-list-item-menu"
+			menu-align="right"
+			event=""
+			@click.native.prevent>
+			<ActionButton icon="icon-important"
+				:close-after-click="true"
+				@click.prevent="onToggleImportant">
+				{{
+					data.flags.important ? t('mail', 'Mark unimportant') : t('mail', 'Mark important')
+				}}
+			</ActionButton>
+			<ActionButton icon="icon-starred"
+				:close-after-click="true"
+				@click.prevent="onToggleFlagged">
+				{{
+					data.flags.flagged ? t('mail', 'Mark unfavorite') : t('mail', 'Mark favorite')
+				}}
+			</ActionButton>
+			<ActionButton icon="icon-mail"
+				:close-after-click="true"
+				@click.prevent="onToggleSeen">
+				{{
+					data.flags.seen ? t('mail', 'Mark unread') : t('mail', 'Mark read')
+				}}
+			</ActionButton>
+			<ActionButton icon="icon-junk"
+				:close-after-click="true"
+				@click.prevent="onToggleJunk">
+				{{
+					data.flags.junk ? t('mail', 'Mark not spam') : t('mail', 'Mark as spam')
+				}}
+			</ActionButton>
+			<ActionButton icon="icon-checkmark"
+				:close-after-click="true"
+				@click.prevent="toggleSelected">
+				{{
+					selected ? t('mail', 'Unselect') : t('mail', 'Select')
+				}}
+			</ActionButton>
+			<ActionButton icon="icon-external"
+				:close-after-click="true"
+				@click.prevent="onOpenMoveModal">
+				{{ t('mail', 'Move') }}
+			</ActionButton>
+			<ActionRouter icon="icon-add"
+				:to="{
+					name: 'message',
+					params: {
+						mailboxId: $route.params.mailboxId,
+						threadId: 'asNew',
+						filter: $route.params.filter,
+					},
+					query: {
+						messageId: data.databaseId,
+					},
+				}">
+				{{ t('mail', 'Edit as new message') }}
+			</ActionRouter>
+			<ActionButton icon="icon-delete"
+				:close-after-click="true"
+				@click.prevent="onDelete">
+				{{ t('mail', 'Delete') }}
+			</ActionButton>
+		</Actions>
+		<MoveModal v-if="showMoveModal"
+			:account="account"
+			:envelopes="[data]"
+			@close="onCloseMoveModal" />
 	</router-link>
 </template>
 
 <script>
-import MenuEnvelope from './MenuEnvelope'
+import Actions from '@nextcloud/vue/dist/Components/Actions'
+import ActionButton from '@nextcloud/vue/dist/Components/ActionButton'
+import ActionRouter from '@nextcloud/vue/dist/Components/ActionRouter'
 import Moment from './Moment'
+import MoveModal from './MoveModal'
 import importantSvg from '../../img/important.svg'
+import { showError } from '@nextcloud/dialogs'
 
 import Avatar from './Avatar'
 import { calculateAccountColor } from '../util/AccountColor'
-import { DraggableEnvelopeDirective } from '../directives/drag-and-drop/draggable-envelope'
+import { matchError } from '../errors/match'
+import NoTrashMailboxConfiguredError
+	from '../errors/NoTrashMailboxConfiguredError'
+import logger from '../logger'
 
 export default {
 	name: 'Envelope',
 	components: {
+		Actions,
+		ActionButton,
+		ActionRouter,
 		Avatar,
-		MenuEnvelope,
 		Moment,
-	},
-	directives: {
-		draggableEnvelope: DraggableEnvelopeDirective,
+		MoveModal,
 	},
 	props: {
 		data: {
@@ -107,21 +161,19 @@ export default {
 			type: Boolean,
 			default: false,
 		},
-		selectedEnvelopes: {
-			type: Array,
-			required: false,
-			default: () => [],
-		},
 	},
 	data() {
 		return {
 			importantSvg,
+			showMoveModal: false,
 		}
 	},
 	computed: {
+		account() {
+			return this.$store.getters.getAccount(this.data.accountId)
+		},
 		accountColor() {
-			const account = this.$store.getters.getAccount(this.data.accountId)
-			return calculateAccountColor(account?.emailAddress ?? '')
+			return calculateAccountColor(this.account?.emailAddress ?? '')
 		},
 		draft() {
 			return this.data.flags.draft
@@ -182,9 +234,9 @@ export default {
 		},
 	},
 	methods: {
-		unselect() {
-			if (this.selected) {
-				this.$emit('updated:selected', false)
+		setSelected(value) {
+			if (this.selected !== value) {
+				this.$emit('update:selected', value)
 			}
 		},
 		toggleSelected() {
@@ -193,14 +245,46 @@ export default {
 		onSelectMultiple() {
 			this.$emit('select-multiple')
 		},
-		onToggleImportant() {
-			this.$store.dispatch('toggleEnvelopeImportant', this.data)
-		},
 		onToggleFlagged() {
 			this.$store.dispatch('toggleEnvelopeFlagged', this.data)
 		},
+		onToggleImportant() {
+			this.$store.dispatch('toggleEnvelopeImportant', this.data)
+		},
+		onToggleSeen() {
+			this.$store.dispatch('toggleEnvelopeSeen', { envelope: this.data })
+		},
 		onToggleJunk() {
 			this.$store.dispatch('toggleEnvelopeJunk', this.data)
+		},
+		async onDelete() {
+			// Remove from selection first
+			this.setSelected(false)
+
+			// Delete
+			this.$emit('delete')
+			try {
+				await this.$store.dispatch('deleteMessage', {
+					id: this.data.databaseId,
+				})
+			} catch (error) {
+				showError(await matchError(error, {
+					[NoTrashMailboxConfiguredError.getName()]() {
+						return t('mail', 'No trash mailbox configured')
+					},
+					default(error) {
+						logger.error('could not delete message', error)
+						return t('mail', 'Could not delete message')
+					},
+				}))
+			}
+		},
+		onOpenMoveModal() {
+			this.setSelected(false)
+			this.showMoveModal = true
+		},
+		onCloseMoveModal() {
+			this.showMoveModal = false
 		},
 	},
 }

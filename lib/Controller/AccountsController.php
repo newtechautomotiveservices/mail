@@ -194,13 +194,6 @@ class AccountsController extends Controller {
 						   string $smtpSslMode = null,
 						   string $smtpUser = null,
 						   string $smtpPassword = null): JSONResponse {
-		try {
-			// Make sure the account actually exists
-			$this->accountService->find($this->currentUserId, $id);
-		} catch (ClientException $e) {
-			return new JSONResponse([], Http::STATUS_BAD_REQUEST);
-		}
-
 		$account = null;
 		$errorMessage = null;
 		try {
@@ -360,9 +353,8 @@ class AccountsController extends Controller {
 	 * @param string $to
 	 * @param string $cc
 	 * @param string $bcc
-	 * @param bool $isHtml
-	 * @param bool $requestMdn
 	 * @param int|null $draftId
+	 * @param string|null $folderId
 	 * @param int|null $messageId
 	 * @param mixed $attachments
 	 * @param int|null $aliasId
@@ -379,7 +371,6 @@ class AccountsController extends Controller {
 						 string $cc,
 						 string $bcc,
 						 bool $isHtml = true,
-						 bool $requestMdn = false,
 						 int $draftId = null,
 						 int $messageId = null,
 						 array $attachments = [],
@@ -391,7 +382,7 @@ class AccountsController extends Controller {
 		$expandedCc = $this->groupsIntegration->expand($cc);
 		$expandedBcc = $this->groupsIntegration->expand($bcc);
 
-		$messageData = NewMessageData::fromRequest($account, $expandedTo, $expandedCc, $expandedBcc, $subject, $body, $attachments, $isHtml, $requestMdn);
+		$messageData = NewMessageData::fromRequest($account, $expandedTo, $expandedCc, $expandedBcc, $subject, $body, $attachments, $isHtml);
 		$repliedMessageData = null;
 		if ($messageId !== null) {
 			try {
@@ -473,7 +464,7 @@ class AccountsController extends Controller {
 			return new JSONResponse([
 				'id' => $this->mailManager->getMessageIdForUid($draftsMailbox, $newUID)
 			]);
-		} catch (ClientException | ServiceException $ex) {
+		} catch (ClientException|ServiceException $ex) {
 			$this->logger->error('Saving draft failed: ' . $ex->getMessage());
 			throw $ex;
 		}

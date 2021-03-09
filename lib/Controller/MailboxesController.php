@@ -88,7 +88,6 @@ class MailboxesController extends Controller {
 	 */
 	public function index(int $accountId): JSONResponse {
 		$account = $this->accountService->find($this->currentUserId, $accountId);
-
 		$mailboxes = $this->mailManager->getMailboxes($account);
 		return new JSONResponse([
 			'id' => $accountId,

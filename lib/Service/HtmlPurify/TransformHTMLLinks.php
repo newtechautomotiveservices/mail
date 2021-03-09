@@ -27,7 +27,6 @@ use HTMLPurifier_AttrTransform;
 use HTMLPurifier_Config;
 use HTMLPurifier_Context;
 use HTMLPurifier_URIParser;
-use OCP\IURLGenerator;
 
 /**
  * Adds target="_blank" to all outbound links.
@@ -39,11 +38,7 @@ class TransformHTMLLinks extends HTMLPurifier_AttrTransform {
 	 */
 	private $parser;
 
-	/** @var IURLGenerator */
-	private $urlGenerator;
-
-	public function __construct(IURLGenerator $urlGenerator) {
-		$this->urlGenerator = $urlGenerator;
+	public function __construct() {
 		$this->parser = new HTMLPurifier_URIParser();
 	}
 
@@ -58,13 +53,9 @@ class TransformHTMLLinks extends HTMLPurifier_AttrTransform {
 			return $attr;
 		}
 
+		// XXX Kind of inefficient
 		$attr['target'] = '_blank';
 		$attr['rel'] = 'noopener';
-
-		// Open mailto: links in Mail
-		if (stripos($attr['href'], 'mailto:') === 0) {
-			$attr['href'] = $this->urlGenerator->linkToRoute('mail.page.mailto') . '?to=' . substr($attr['href'], 7);
-		}
 
 		return $attr;
 	}

@@ -35,6 +35,11 @@ return [
 			'verb' => 'GET'
 		],
 		[
+			'name' => 'page#accountSettings',
+			'url' => '/accounts/{id}/settings',
+			'verb' => 'GET'
+		],
+		[
 			'name' => 'page#mailbox',
 			'url' => '/box/{id}',
 			'verb' => 'GET'
@@ -45,11 +50,6 @@ return [
 			'verb' => 'GET'
 		],
 		[
-			'name' => 'page#draft',
-			'url' => '/box/{mailboxId}/thread/new/{draftId}',
-			'verb' => 'GET'
-		],
-		[
 			'name' => 'page#index',
 			'url' => '/',
 			'verb' => 'GET'
@@ -57,11 +57,6 @@ return [
 		[
 			'name' => 'page#compose',
 			'url' => '/compose',
-			'verb' => 'GET'
-		],
-		[
-			'name' => 'page#mailto',
-			'url' => '/mailto',
 			'verb' => 'GET'
 		],
 		[
@@ -120,11 +115,6 @@ return [
 			'verb' => 'GET'
 		],
 		[
-			'name' => 'messages#downloadAttachments',
-			'url' => '/api/messages/{id}/attachments',
-			'verb' => 'GET'
-		],
-		[
 			'name' => 'messages#saveAttachment',
 			'url' => '/api/messages/{id}/attachment/{attachmentId}',
 			'verb' => 'POST'
@@ -160,11 +150,6 @@ return [
 			'verb' => 'POST'
 		],
 		[
-			'name' => 'messages#mdn',
-			'url' => '/api/messages/{id}/mdn',
-			'verb' => 'POST'
-		],
-		[
 			'name' => 'avatars#url',
 			'url' => '/api/avatars/url/{email}',
 			'verb' => 'GET'
@@ -195,34 +180,14 @@ return [
 			'verb' => 'DELETE'
 		],
 		[
-			'name' => 'trusted_senders#setTrusted',
-			'url' => '/api/trustedsenders/{email}',
-			'verb' => 'PUT'
-		],
-		[
-			'name' => 'trusted_senders#removeTrust',
-			'url' => '/api/trustedsenders/{email}',
-			'verb' => 'DELETE'
-		],
-		[
-			'name' => 'trusted_senders#list',
-			'url' => '/api/trustedsenders',
+			'name' => 'template#all',
+			'url' => '/ajax/template/all/{type}',
 			'verb' => 'GET'
 		],
 		[
-			'name' => 'sieve#updateAccount',
-			'url' => '/api/sieve/account/{id}',
-			'verb' => 'PUT'
-		],
-		[
-			'name' => 'sieve#getActiveScript',
-			'url' => '/api/sieve/active/{id}',
+			'name' => 'template#render',
+			'url' => '/ajax/template/render/{id}/{type}/{vehicle_vin}/{vehicle_stockNumber}',
 			'verb' => 'GET'
-		],
-		[
-			'name' => 'sieve#updateActiveScript',
-			'url' => '/api/sieve/active/{id}',
-			'verb' => 'PUT'
 		]
 	],
 	'resources' => [

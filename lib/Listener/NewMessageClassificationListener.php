@@ -67,16 +67,11 @@ class NewMessageClassificationListener implements IEventListener {
 			}
 		}
 
-		// if the message is already flagged as important, we won't classify it again.
-		$messages = array_filter($event->getMessages(), function ($message) {
-			return ($message->getFlagImportant() === false);
-		});
-
 		try {
 			$predictions = $this->classifier->classifyImportance(
 				$event->getAccount(),
 				$event->getMailbox(),
-				$messages
+				$event->getMessages()
 			);
 
 			foreach ($event->getMessages() as $message) {
@@ -84,7 +79,7 @@ class NewMessageClassificationListener implements IEventListener {
 					$message->setFlagImportant(true);
 				}
 			}
-		} catch (Throwable | ServiceException $e) {
+		} catch (Throwable|ServiceException $e) {
 			// TODO: remove Throwable catch once https://github.com/RubixML/RubixML/pull/69 landed here
 			$this->logger->error('Could not classify incoming message importance: ' . $e->getMessage(), [
 				'exception' => $e,

@@ -26,7 +26,6 @@ namespace OCA\Mail\Service;
 use Horde_Imap_Client;
 use Horde_Imap_Client_Exception;
 use Horde_Imap_Client_Exception_NoSupportExtension;
-use Horde_Imap_Client_Socket;
 use OCA\Mail\Account;
 use OCA\Mail\Contracts\IMailManager;
 use OCA\Mail\Db\Mailbox;
@@ -65,7 +64,6 @@ class MailManager implements IMailManager {
 		'draft' => [Horde_Imap_Client::FLAG_DRAFT],
 		'recent' => [Horde_Imap_Client::FLAG_RECENT],
 		'junk' => [Horde_Imap_Client::FLAG_JUNK, 'junk'],
-		'mdnsent' => [Horde_Imap_Client::FLAG_MDNSENT],
 	];
 
 	/** @var IMAPClientFactory */
@@ -185,7 +183,7 @@ class MailManager implements IMailManager {
 				$uid,
 				$loadBody
 			);
-		} catch (Horde_Imap_Client_Exception | DoesNotExistException $e) {
+		} catch (Horde_Imap_Client_Exception|DoesNotExistException $e) {
 			throw new ServiceException(
 				"Could not load message",
 				(int) $e->getCode(),
@@ -220,12 +218,12 @@ class MailManager implements IMailManager {
 		$client = $this->imapClientFactory->getClient($account);
 
 		try {
-			return $this->imapMessageMapper->getFullText(
+			return $this->imapMessageMapper->getSource(
 				$client,
 				$mailbox,
 				$uid
 			);
-		} catch (Horde_Imap_Client_Exception | DoesNotExistException $e) {
+		} catch (Horde_Imap_Client_Exception|DoesNotExistException $e) {
 			throw new ServiceException("Could not load message", 0, $e);
 		}
 	}
@@ -387,13 +385,10 @@ class MailManager implements IMailManager {
 		}
 
 		// Only send system flags to the IMAP server as other flags might not be supported
-		$imapFlags = $this->filterFlags($account, $flag, $mailbox);
+		$imapFlags = self::ALLOWED_FLAGS[$flag] ?? [];
 		try {
 			foreach ($imapFlags as $imapFlag) {
-				if (empty($imapFlag) === true) {
-					continue;
-				}
-				if ($value === true) {
+				if ($value) {
 					$this->imapMessageMapper->addFlag($client, $mb, $uid, $imapFlag);
 				} else {
 					$this->imapMessageMapper->removeFlag($client, $mb, $uid, $imapFlag);
@@ -505,58 +500,5 @@ class MailManager implements IMailManager {
 		$client = $this->imapClientFactory->getClient($account);
 		$this->folderMapper->delete($client, $mailbox->getName());
 		$this->mailboxMapper->delete($mailbox);
-	}
-
-	/**
-	 * @param Account $account
-	 * @param Mailbox $mailbox
-	 * @param Message $message
-	 * @return array[]
-	 */
-	public function getMailAttachments(Account $account, Mailbox $mailbox, Message $message): array {
-		return $this->imapMessageMapper->getAttachments($this->imapClientFactory->getClient($account), $mailbox->getName(), $message->getUid());
-	}
-
-	/**
-	 * Filter out IMAP flags that aren't supported by the client server
-	 *
-	 * @param Horde_Imap_Client_Socket $client
-	 * @param string $flag
-	 * @param string $mailbox
-	 * @return array
-	 */
-	public function filterFlags(Account $account, string $flag, string $mailbox): array {
-		// check for RFC server flags
-		if (array_key_exists($flag, self::ALLOWED_FLAGS) === true) {
-			return self::ALLOWED_FLAGS[$flag];
-		}
-
-		// Only allow flag setting if IMAP supports Permaflags
-		// @TODO check if there are length & char limits on permflags
-		if ($this->isPermflagsEnabled($account, $mailbox) === true) {
-			return ["$" . $flag];
-		}
-		return [];
-	}
-
-	/**
-	 * Check IMAP server for support for PERMANENTFLAGS
-	 *
-	 * @param Account $account
-	 * @param string $mailbox
-	 * @return boolean
-	 */
-	public function isPermflagsEnabled(Account $account, string $mailbox): bool {
-		$client = $this->imapClientFactory->getClient($account);
-		try {
-			$capabilities = $client->status($mailbox, Horde_Imap_Client::STATUS_PERMFLAGS);
-		} catch (Horde_Imap_Client_Exception $e) {
-			throw new ServiceException(
-				"Could not get message flag options from IMAP: " . $e->getMessage(),
-				(int) $e->getCode(),
-				$e
-			);
-		}
-		return (is_array($capabilities) === true && array_key_exists('permflags', $capabilities) === true && in_array("\*", $capabilities['permflags'], true) === true);
 	}
 }

@@ -5,20 +5,16 @@
 				<div class="button primary" @click.prevent="markSelectedSeenOrUnseen">
 					<span id="action-label">{{
 						areAllSelectedRead
-							? n(
+							? t(
 								'mail',
 								'Mark {number} unread',
-								'Mark {number} unread',
-								selection.length,
 								{
 									number: selection.length,
 								}
 							)
-							: n(
+							: t(
 								'mail',
 								'Mark {number} read',
-								'Mark {number} read',
-								selection.length,
 								{
 									number: selection.length,
 								}
@@ -31,20 +27,16 @@
 						@click.prevent="favoriteOrUnfavoriteAll">
 						{{
 							areAllSelectedFavorite
-								? n(
+								? t(
 									'mail',
 									'Unfavorite {number}',
-									'Unfavorite {number}',
-									selection.length,
 									{
 										number: selection.length,
 									}
 								)
-								: n(
+								: t(
 									'mail',
 									'Favorite {number}',
-									'Favorite {number}',
-									selection.length,
 									{
 										number: selection.length,
 									}
@@ -54,11 +46,9 @@
 					<ActionButton icon="icon-close"
 						:close-after-click="true"
 						@click.prevent="unselectAll">
-						{{ n(
+						{{ t(
 							'mail',
 							'Unselect {number}',
-							'Unselect {number}',
-							selection.length,
 							{
 								number: selection.length,
 							}
@@ -69,25 +59,9 @@
 						icon="icon-external"
 						:close-after-click="true"
 						@click.prevent="onOpenMoveModal">
-						{{ n(
+						{{ t(
 							'mail',
 							'Move {number}',
-							'Move {number}',
-							selection.length,
-							{
-								number: selection.length,
-							}
-						) }}
-					</ActionButton>
-					<ActionButton
-						icon="icon-forward"
-						:close-after-click="true"
-						@click.prevent="forwardSelectedAsAttachment">
-						{{ n(
-							'mail',
-							'Forward {number} as attachment',
-							'Forward {number} as attachment',
-							selection.length,
 							{
 								number: selection.length,
 							}
@@ -96,11 +70,9 @@
 					<ActionButton icon="icon-delete"
 						:close-after-click="true"
 						@click.prevent="deleteAllSelected">
-						{{ n(
+						{{ t(
 							'mail',
 							'Delete {number}',
-							'Delete {number}',
-							selection.length,
 							{
 								number: selection.length,
 							}
@@ -124,12 +96,11 @@
 				:key="env.databaseId"
 				:data="env"
 				:mailbox="mailbox"
-				:selected="selection.includes(env.databaseId)"
+				:selected="isEnvelopeSelected(index)"
 				:select-mode="selectMode"
-				:selected-envelopes="selectedEnvelopes"
 				@delete="$emit('delete', env.databaseId)"
-				@update:selected="onEnvelopeSelectToggle(env, index, ...$event)"
-				@select-multiple="onEnvelopeSelectMultiple(env, index)" />
+				@update:selected="onEnvelopeSelectToggle(index, ...$event)"
+				@select-multiple="onEnvelopeSelectMultiple(index)" />
 			<div
 				v-if="loadMoreButton && !loadingMore"
 				:key="'list-collapse-' + searchQuery"
@@ -153,8 +124,6 @@ import MoveModal from './MoveModal'
 import { matchError } from '../errors/match'
 import NoTrashMailboxConfiguredError
 	from '../errors/NoTrashMailboxConfiguredError'
-import { differenceWith } from 'ramda'
-import dragEventBus from '../directives/drag-and-drop/util/dragEventBus'
 
 export default {
 	name: 'EnvelopeList',
@@ -211,32 +180,15 @@ export default {
 		},
 		areAllSelectedRead() {
 			// returns false if at least one selected message has not been read yet
-			return this.selectedEnvelopes.every((env) => env.flags.seen === true)
+			return this.selection.every((idx) => this.envelopes[idx].flags.seen === true)
 		},
 		areAllSelectedFavorite() {
 			// returns false if at least one selected message has not been favorited yet
-			return this.selectedEnvelopes.every((env) => env.flags.flagged === true)
+			return this.selection.every((idx) => this.envelopes[idx].flags.flagged === true)
 		},
 		selectedEnvelopes() {
-			return this.envelopes.filter((env) => this.selection.includes(env.databaseId))
+			return this.selection.map((idx) => this.envelopes[idx])
 		},
-	},
-	watch: {
-		envelopes(newVal, oldVal) {
-			// Unselect vanished envelopes
-			const newIds = newVal.map((env) => env.databaseId)
-			this.selection = this.selection.filter((id) => newIds.includes(id))
-			differenceWith((a, b) => a.databaseId === b.databaseId, oldVal, newVal)
-				.forEach((env) => {
-					env.flags.selected = false
-				})
-		},
-	},
-	mounted() {
-		dragEventBus.$on('envelopesDropped', this.unselectAll)
-	},
-	beforeDestroy() {
-		dragEventBus.$off('envelopesDropped', this.unselectAll)
 	},
 	methods: {
 		isEnvelopeSelected(idx) {
@@ -248,9 +200,9 @@ export default {
 		},
 		markSelectedSeenOrUnseen() {
 			const seen = !this.areAllSelectedRead
-			this.selectedEnvelopes.forEach((envelope) => {
+			this.selection.forEach((envelopeId) => {
 				this.$store.dispatch('toggleEnvelopeSeen', {
-					envelope,
+					envelope: this.envelopes[envelopeId],
 					seen,
 				})
 			})
@@ -258,24 +210,23 @@ export default {
 		},
 		favoriteOrUnfavoriteAll() {
 			const favFlag = !this.areAllSelectedFavorite
-			this.selectedEnvelopes.forEach((envelope) => {
+			this.selection.forEach((envelopeId) => {
 				this.$store.dispatch('markEnvelopeFavoriteOrUnfavorite', {
-					envelope,
+					envelope: this.envelopes[envelopeId],
 					favFlag,
 				})
 			})
 			this.unselectAll()
 		},
 		deleteAllSelected() {
-			this.selectedEnvelopes.forEach(async(envelope) => {
+			this.selection.forEach(async(envelopeId) => {
 				// Navigate if the message being deleted is the one currently viewed
-				if (envelope.databaseId === this.$route.params.threadId) {
-					const index = this.envelopes.indexOf(envelope)
+				if (this.envelopes[envelopeId].databaseId === this.$route.params.threadId) {
 					let next
-					if (index === 0) {
-						next = this.envelopes[index + 1]
+					if (envelopeId === 0) {
+						next = this.envelopes[envelopeId + 1]
 					} else {
-						next = this.envelopes[index - 1]
+						next = this.envelopes[envelopeId - 1]
 					}
 
 					if (next) {
@@ -288,10 +239,10 @@ export default {
 						})
 					}
 				}
-				logger.info(`deleting message ${envelope.databaseId}`)
+				logger.info(`deleting message ${this.envelopes[envelopeId].databaseId}`)
 				try {
 					await this.$store.dispatch('deleteMessage', {
-						id: envelope.databaseId,
+						id: this.envelopes[envelopeId].databaseId,
 					})
 				} catch (error) {
 					showError(await matchError(error, {
@@ -307,30 +258,32 @@ export default {
 			})
 			this.unselectAll()
 		},
-		setEnvelopeSelected(envelope, selected) {
-			const alreadySelected = this.selection.includes(envelope.databaseId)
-			if (selected && !alreadySelected) {
+		setEnvelopeSelected(idx, selected) {
+			const envelope = this.envelopes[idx]
+			if (selected) {
 				envelope.flags.selected = true
-				this.selection.push(envelope.databaseId)
-			} else if (!selected && alreadySelected) {
+				this.selection.push(idx)
+			} else {
 				envelope.flags.selected = false
-				this.selection.splice(this.selection.indexOf(envelope.databaseId), 1)
+				this.selection.splice(this.selection.indexOf(idx), 1)
 			}
 		},
-		onEnvelopeSelectToggle(envelope, index, selected) {
+		onEnvelopeSelectToggle(index, selected) {
 			this.lastToggledIndex = index
-			this.setEnvelopeSelected(envelope, selected)
+			this.setEnvelopeSelected(index, selected)
 		},
-		onEnvelopeSelectMultiple(envelope, index) {
+		onEnvelopeSelectMultiple(index) {
 			if (this.lastToggledIndex === undefined) {
 				return
 			}
 
 			const start = Math.min(this.lastToggledIndex, index)
 			const end = Math.max(this.lastToggledIndex, index)
-			const selected = this.selection.includes(envelope.databaseId)
+			const selected = this.selection.includes(index)
 			for (let i = start; i <= end; i++) {
-				this.setEnvelopeSelected(this.envelopes[i], !selected)
+				if (this.selection.includes(i) !== !selected) {
+					this.setEnvelopeSelected(i, !selected)
+				}
 			}
 			this.lastToggledIndex = index
 		},
@@ -342,20 +295,6 @@ export default {
 		},
 		onOpenMoveModal() {
 			this.showMoveModal = true
-		},
-		async forwardSelectedAsAttachment() {
-			const selected = this.selection
-			this.$router.push({
-				name: 'message',
-				params: {
-					mailboxId: this.$route.params.mailboxId,
-					threadId: 'new',
-				},
-				query: {
-					forwardedMessages: selected,
-				},
-			})
-			this.unselectAll()
 		},
 		onCloseMoveModal() {
 			this.showMoveModal = false

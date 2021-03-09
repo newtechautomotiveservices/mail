@@ -23,7 +23,6 @@ declare(strict_types=1);
 
 namespace OCA\Mail\Model;
 
-use finfo;
 use Horde_Mime_Part;
 use OCA\Mail\AddressList;
 use OCA\Mail\Db\LocalAttachment;
@@ -58,7 +57,10 @@ class Message implements IMessage {
 	private $content = '';
 
 	/** @var Horde_Mime_Part[] */
-	private $attachments = [];
+	private $cloudAttachments = [];
+
+	/** @var Horde_Mime_Part[] */
+	private $localAttachments = [];
 
 	public function __construct() {
 		$this->from = new AddressList();
@@ -209,31 +211,15 @@ class Message implements IMessage {
 	/**
 	 * @return Horde_Mime_Part[]
 	 */
-	public function getAttachments(): array {
-		return $this->attachments;
+	public function getCloudAttachments(): array {
+		return $this->cloudAttachments;
 	}
 
 	/**
-	 * Adds a file that's coming from another email's attachment (typical
-	 * use case is forwarding a message)
+	 * @return Horde_Mime_Part[]
 	 */
-	public function addRawAttachment(string $name, string $content): void {
-		$mime = 'application/octet-stream';
-		if (extension_loaded('fileinfo')) {
-			$finfo = new finfo(FILEINFO_MIME_TYPE);
-			$detectedMime = $finfo->buffer($content);
-			if ($detectedMime !== false) {
-				$mime = $detectedMime;
-			}
-		}
-
-		$part = new Horde_Mime_Part();
-		$part->setCharset('us-ascii');
-		$part->setDisposition('attachment');
-		$part->setName($name);
-		$part->setContents($content);
-		$part->setType($mime);
-		$this->attachments[] = $part;
+	public function getLocalAttachments(): array {
+		return $this->localAttachments;
 	}
 
 	/**
@@ -248,7 +234,7 @@ class Message implements IMessage {
 		$part->setName($file->getName());
 		$part->setContents($file->getContent());
 		$part->setType($file->getMimeType());
-		$this->attachments[] = $part;
+		$this->cloudAttachments[] = $part;
 	}
 
 	/**
@@ -264,6 +250,6 @@ class Message implements IMessage {
 		$part->setName($attachment->getFileName());
 		$part->setContents($file->getContent());
 		$part->setType($attachment->getMimeType());
-		$this->attachments[] = $part;
+		$this->localAttachments[] = $part;
 	}
 }

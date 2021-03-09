@@ -25,7 +25,6 @@ namespace OCA\Mail\Command;
 
 use OCA\Mail\Db\MailAccount;
 use OCA\Mail\Service\AccountService;
-use OCP\IUserManager;
 use OCP\Security\ICrypto;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -53,17 +52,11 @@ class CreateAccount extends Command {
 	/** @var \OCP\Security\ICrypto */
 	private $crypto;
 
-	/** @var IUserManager */
-	private $userManager;
-
-	public function __construct(AccountService $service,
-								ICrypto $crypto,
-								IUserManager $userManager) {
+	public function __construct(AccountService $service, ICrypto $crypto) {
 		parent::__construct();
 
 		$this->accountService = $service;
 		$this->crypto = $crypto;
-		$this->userManager = $userManager;
 	}
 
 	/**
@@ -105,11 +98,6 @@ class CreateAccount extends Command {
 		$smtpSslMode = $input->getArgument(self::ARGUMENT_SMTP_SSL_MODE);
 		$smtpUser = $input->getArgument(self::ARGUMENT_SMTP_USER);
 		$smtpPassword = $input->getArgument(self::ARGUMENT_SMTP_PASSWORD);
-
-		if (!$this->userManager->userExists($userId)) {
-			$output->writeln("<error>User $userId does not exist</error>");
-			return 1;
-		}
 
 		$account = new MailAccount();
 		$account->setUserId($userId);

@@ -50,6 +50,12 @@ use OCA\Mail\Model\Message;
 use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\Security\ICrypto;
+use OCA\NTSSO\Controller\NTUser;
+use OCA\Mail\Db\MailAccountMapper;
+use OCA\Mail\Service\AccountService;
+use League\OAuth2\Client\Token\AccessToken;
+use League\OAuth2\Client\Grant\RefreshToken;
+use League\OAuth2\Client\Provider\Google;
 
 class Account implements JsonSerializable {
 
@@ -71,14 +77,19 @@ class Account implements JsonSerializable {
 	/** @var Alias */
 	private $alias;
 
+	private $logger;
+
 	/**
 	 * @param MailAccount $account
 	 */
-	public function __construct(MailAccount $account) {
+	public function __construct(MailAccount $account, NTUser $ntuser) {
+		$profile = $ntuser->getProfile();
+		$accountMapper = \OC::$server->get(MailAccountMapper::class);
 		$this->account = $account;
-		$this->crypto = OC::$server->getCrypto();
-		$this->config = OC::$server->getConfig();
-		$this->memcacheFactory = OC::$server->getMemcacheFactory();
+		$this->crypto = \OC::$server->getCrypto();
+		$this->config = \OC::$server->getConfig();
+		$this->logger = \OC::$server->getLogger();
+		$this->memcacheFactory = \OC::$server->getMemcacheFactory();
 	}
 
 	public function __destruct() {
@@ -120,6 +131,14 @@ class Account implements JsonSerializable {
 		return $this->account->getEmail();
 	}
 
+	public function getUsesExternalAuth() {
+		return $this->account->getUsesExternalAuth();
+	}
+
+	public function getDeleted() {
+		return $this->account->getDeleted();
+	}
+
 	/**
 	 * @deprecated use \OCA\Mail\IMAP\IMAPClientFactory instead
 	 * @return Horde_Imap_Client_Socket
@@ -149,6 +168,10 @@ class Account implements JsonSerializable {
 					],
 				],
 			];
+			if($this->account->getUsesExternalAuth()) {
+				$params['password'] = "XOAUTH2";
+				$params['xoauth2_token'] = $this->account->getExternalAuth();
+			}
 			if ($this->config->getSystemValue('debug', false)) {
 				$params['debug'] = $this->config->getSystemValue('datadirectory') . '/horde_imap.log';
 			}
@@ -183,8 +206,9 @@ class Account implements JsonSerializable {
 	 * @throws ServiceException
 	 */
 	public function getMailbox($folderId) {
+		$imapConnection = $this->getImapConnection();
 		return new Mailbox(
-			$this->getImapConnection(),
+			$imapConnection,
 			new Horde_Imap_Client_Mailbox($folderId)
 		);
 	}

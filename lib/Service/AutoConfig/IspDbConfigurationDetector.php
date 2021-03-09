@@ -34,6 +34,7 @@ use OCA\Mail\Db\MailAccount;
 use OCA\Mail\SMTP\SmtpClientFactory;
 use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
+use OCA\NTSSO\Controller\NTUser;
 
 class IspDbConfigurationDetector {
 
@@ -58,6 +59,8 @@ class IspDbConfigurationDetector {
 	/** @var SmtpClientFactory */
 	private $smtpClientFactory;
 
+	public $ntuser;
+
 	/**
 	 * @param LoggerInterface $logger
 	 * @param string|null $UserId
@@ -69,6 +72,7 @@ class IspDbConfigurationDetector {
 	public function __construct(LoggerInterface $logger,
 								?string $UserId,
 								ICrypto $crypto,
+								NTUser $ntuser,
 								IspDb $ispDb,
 								ImapConnector $imapConnector,
 								SmtpClientFactory $smtpClientFactory) {
@@ -78,6 +82,7 @@ class IspDbConfigurationDetector {
 		$this->crypto = $crypto;
 		$this->imapConnector = $imapConnector;
 		$this->smtpClientFactory = $smtpClientFactory;
+		$this->ntuser = $ntuser;
 	}
 
 	/**
@@ -89,7 +94,7 @@ class IspDbConfigurationDetector {
 	public function detectImapAndSmtp(string $email, string $password, string $name) {
 		// splitting the email address into user and host part
 		// TODO: use horde libs for email address parsing
-		[, $host] = explode("@", $email);
+		list(, $host) = explode("@", $email);
 
 		$ispdb = $this->ispDb->query($host, $email);
 
@@ -156,7 +161,7 @@ class IspDbConfigurationDetector {
 		if ($imap['username'] === '%EMAILADDRESS%') {
 			$user = $email;
 		} elseif ($imap['username'] === '%EMAILLOCALPART%') {
-			[$user,] = explode("@", $email);
+			list($user,) = explode("@", $email);
 		} elseif (empty($imap['username'])) {
 			$this->logger->info("imap username is either an invalid placeholder or is empty");
 			return null;
@@ -211,7 +216,7 @@ class IspDbConfigurationDetector {
 			if ($smtp['username'] === '%EMAILADDRESS%') {
 				$user = $email;
 			} elseif ($smtp['username'] === '%EMAILLOCALPART%') {
-				[$user,] = explode("@", $email);
+				list($user,) = explode("@", $email);
 			} elseif (empty($smtp['username'])) {
 				$this->logger->info("smtp username is either an unknown placeholder or is empty");
 				return null;
@@ -231,7 +236,7 @@ class IspDbConfigurationDetector {
 				$account->setOutboundSslMode(strtolower($smtp['socketType']));
 			}
 
-			$a = new Account($account);
+			$a = new Account($account, $this->ntuser);
 			$transport = $this->smtpClientFactory->create($a);
 			if ($transport instanceof Horde_Mail_Transport_Smtphorde) {
 				$transport->getSMTPObject();

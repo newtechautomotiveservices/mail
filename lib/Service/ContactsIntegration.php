@@ -51,12 +51,14 @@ class ContactsIntegration {
 			return [];
 		}
 
+
 		// If 'Allow username autocompletion in share dialog' is disabled in the admin sharing settings, then we must not
 		// auto-complete system users
 		$allowSystemUsers = $this->config->getAppValue('core', 'shareapi_allow_share_dialog_user_enumeration', 'no') === 'yes';
 
 		$result = $this->contactsManager->search($term, ['FN', 'EMAIL']);
 		$receivers = [];
+
 		foreach ($result as $r) {
 			if (!$allowSystemUsers && isset($r['isLocalSystemBook']) && $r['isLocalSystemBook']) {
 				continue;

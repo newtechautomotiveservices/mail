@@ -6,7 +6,7 @@
 
 		<p v-if="loadingOptOutSettings" class="app-settings">
 			<span class="icon-loading-small" />
-			{{ optOutSettingsText }}
+			{{ text }}
 		</p>
 		<p v-else class="app-settings">
 			<input
@@ -15,7 +15,7 @@
 				type="checkbox"
 				:checked="useDataCollection"
 				@change="onToggleCollectData">
-			<label for="data-collection-toggle">{{ optOutSettingsText }}</label>
+			<label for="data-collection-toggle">{{ text }}</label>
 		</p>
 
 		<p v-if="loadingAvatarSettings" class="app-settings avatar-settings">
@@ -31,27 +31,11 @@
 				@change="onToggleExternalAvatars">
 			<label for="gravatar-enabled">{{ t('mail', 'Use Gravatar and favicon avatars') }}</label>
 		</p>
-
-		<p v-if="loadingAvatarSettings" class="app-settings reply-settings">
-			<span class="icon-loading-small" />
-			{{ replySettingsText }}
-		</p>
-		<p v-else class="app-settings">
-			<input
-				id="bottom-reply-enabled"
-				class="checkbox"
-				type="checkbox"
-				:checked="useBottomReplies"
-				@change="onToggleButtonReplies">
-			<label for="bottom-reply-enabled">{{ replySettingsText }}</label>
-		</p>
-
 		<p>
 			<button class="icon-mail app-settings-button" @click="registerProtocolHandler">
 				{{ t('mail', 'Register as application for mail links') }}
 			</button>
 		</p>
-
 		<button
 			class="icon-details app-settings-button"
 			@click.prevent.stop="showKeyboardShortcuts"
@@ -76,18 +60,12 @@ export default {
 		return {
 			loadingAvatarSettings: false,
 			// eslint-disable-next-line
-			optOutSettingsText: t('mail', 'Allow the app to collect data about your interactions. Based on this data, the app will adapt to your preferences. The data will only be stored locally.'),
+			text: t('mail', 'Allow the app to collect data about your interactions. Based on this data, the app will adapt to your preferences. The data will only be stored locally.'),
 			loadingOptOutSettings: false,
-			// eslint-disable-next-line
-			replySettingsText: t('mail', 'Put my text to the bottom of a reply instead of on top of it.'),
-			loadingReplySettings: false,
 			displayKeyboardShortcuts: false,
 		}
 	},
 	computed: {
-		useBottomReplies() {
-			return this.$store.getters.getPreference('reply-mode', 'top') === 'bottom'
-		},
 		useExternalAvatars() {
 			return this.$store.getters.getPreference('external-avatars', 'true') === 'true'
 		},
@@ -96,19 +74,6 @@ export default {
 		},
 	},
 	methods: {
-		onToggleButtonReplies(e) {
-			this.loadingReplySettings = true
-
-			this.$store
-				.dispatch('savePreference', {
-					key: 'reply-mode',
-					value: e.target.checked ? 'bottom' : 'top',
-				})
-				.catch((error) => Logger.error('could not save preferences', { error }))
-				.then(() => {
-					this.loadingReplySettings = false
-				})
-		},
 		onToggleExternalAvatars(e) {
 			this.loadingAvatarSettings = true
 
@@ -182,7 +147,6 @@ p.app-settings {
 
 	padding-left: 34px;
 	background-position: 10px center;
-	text-align: left;
 }
 .app-settings-button.button.primary.new-button {
 	color: var(--color-main-background);

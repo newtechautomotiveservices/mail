@@ -31,9 +31,6 @@ export const getters = {
 	getAccount: (state) => (id) => {
 		return state.accounts[id]
 	},
-	getAllAccountSettings: (state) => {
-		return state.allAccountSettings
-	},
 	accounts: (state) => {
 		return state.accountList.map((id) => state.accounts[id])
 	},

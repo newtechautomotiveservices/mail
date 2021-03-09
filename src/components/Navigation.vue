@@ -22,10 +22,9 @@
 <template>
 	<AppNavigation>
 		<AppNavigationNew
-			:text="t('mail', 'New message')"
+			:text="t('mail', 'Compose')"
 			button-id="mail_new_message"
-			button-class="icon-add"
-			role="complementary"
+			button-class="icon-add-white"
 			@click="onNewMessage" />
 		<template #list>
 			<ul id="accounts-list">
@@ -137,7 +136,7 @@ export default {
 			const mailboxId = this.$route.params.mailboxId || this.$store.getters.getMailboxes(accountId)[0]?.databaseId
 			if (
 				this.$router.currentRoute.name === 'message'
-				&& this.$router.currentRoute.params.threadId === 'new'
+				&& this.$router.currentRoute.params.getMailboxes === 'new'
 			) {
 				// If we already show the composer, navigating to it would be pointless (and doesn't work)
 				// instead trigger an event to reset the composer

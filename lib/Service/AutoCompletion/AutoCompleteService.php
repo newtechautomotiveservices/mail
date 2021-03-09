@@ -27,6 +27,9 @@ namespace OCA\Mail\Service\AutoCompletion;
 use OCA\Mail\Db\CollectedAddress;
 use OCA\Mail\Service\ContactsIntegration;
 use OCA\Mail\Service\GroupsIntegration;
+use OCA\Mail\Service\NewtechIntegration;
+use OCA\NTSSO\Controller\NTUser;
+use OCP\IConfig;
 
 class AutoCompleteService {
 
@@ -39,16 +42,26 @@ class AutoCompleteService {
 	/** @var AddressCollector */
 	private $addressCollector;
 
-	public function __construct(ContactsIntegration $ci, GroupsIntegration $gi, AddressCollector $ac) {
+	/** @var IConfig */
+	private $config;
+
+	/** @var newtechIntegration */
+	private $newtechIntegration;
+
+
+	public function __construct(ContactsIntegration $ci, GroupsIntegration $gi, AddressCollector $ac, IConfig $config, NTUser $user) {
 		$this->contactsIntegration = $ci;
 		$this->groupsIntegration = $gi;
 		$this->addressCollector = $ac;
+		$this->config = $config;
+		$this->newtechIntegration = new NewtechIntegration($user->getStore()->store_number, (string)$user->getEntityKey(), $this->config);
 	}
 
 	public function findMatches(string $term): array {
 		$recipientsFromContacts = $this->contactsIntegration->getMatchingRecipient($term);
 		$recipientGroups = $this->groupsIntegration->getMatchingGroups($term);
 		$fromCollector = $this->addressCollector->searchAddress($term);
+		$fromNewtech = $this->newtechIntegration->searchCustomersByNameOrEmail($term);
 
 		// Convert collected addresses into same format as CI creates
 		$recipientsFromCollector = array_map(function (CollectedAddress $address) {
@@ -59,6 +72,7 @@ class AutoCompleteService {
 			];
 		}, $fromCollector);
 
-		return array_merge($recipientsFromContacts, $recipientsFromCollector, $recipientGroups);
+
+		return array_merge($recipientsFromContacts, $recipientsFromCollector, $recipientGroups, $fromNewtech);
 	}
 }

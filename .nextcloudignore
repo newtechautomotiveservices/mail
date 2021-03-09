@@ -34,5 +34,4 @@ codecov.yml
 /tests
 .travis.yml
 /vendor/bin
-/vendor-bin
 /webpack.*

@@ -63,7 +63,6 @@ class CollectedAddressMapper extends QBMapper {
 
 	/**
 	 * @param null|string $email
-	 * @return bool
 	 */
 	public function exists(string $userId, ?string $email) {
 		$qb = $this->db->getQueryBuilder();
@@ -83,7 +82,7 @@ class CollectedAddressMapper extends QBMapper {
 			->from($this->getTableName());
 		$result = $qb->execute();
 
-		$count = (int)$result->fetchColumn();
+		$count = (int)$result->fetchColumn(0);
 		$result->closeCursor();
 		return $count;
 	}

@@ -30,7 +30,7 @@
 </template>
 
 <script>
-import CKEditor from '@ckeditor/ckeditor5-vue2'
+import CKEditor from '@ckeditor/ckeditor5-vue'
 import AlignmentPlugin from '@ckeditor/ckeditor5-alignment/src/alignment'
 import Editor from '@ckeditor/ckeditor5-editor-balloon/src/ballooneditor'
 import EssentialsPlugin from '@ckeditor/ckeditor5-essentials/src/essentials'
@@ -39,7 +39,6 @@ import BoldPlugin from '@ckeditor/ckeditor5-basic-styles/src/bold'
 import HeadingPlugin from '@ckeditor/ckeditor5-heading/src/heading'
 import ItalicPlugin from '@ckeditor/ckeditor5-basic-styles/src/italic'
 import LinkPlugin from '@ckeditor/ckeditor5-link/src/link'
-import ListStyle from '@ckeditor/ckeditor5-list/src/liststyle'
 import ParagraphPlugin from '@ckeditor/ckeditor5-paragraph/src/paragraph'
 
 import { getLanguage } from '@nextcloud/l10n'
@@ -79,14 +78,15 @@ export default {
 		const toolbar = ['undo', 'redo']
 
 		if (this.html) {
-			plugins.push(...[HeadingPlugin, AlignmentPlugin, BoldPlugin, ItalicPlugin, BlockQuotePlugin, LinkPlugin, ListStyle])
-			toolbar.unshift(...['heading', 'alignment', 'bold', 'italic', 'bulletedList', 'numberedList', 'blockquote', 'link'])
+			plugins.push(...[HeadingPlugin, AlignmentPlugin, BoldPlugin, ItalicPlugin, BlockQuotePlugin, LinkPlugin])
+			toolbar.unshift(...['heading', 'alignment', 'bold', 'italic', 'blockquote', 'link'])
 		}
 
 		return {
 			text: '',
 			ready: false,
 			editor: Editor,
+			editorInstance: {},
 			config: {
 				placeholder: this.placeholder,
 				plugins,
@@ -121,7 +121,6 @@ export default {
 			}
 
 			try {
-				logger.debug(`loading ${language} translations for CKEditor`)
 				await import(
 					/* webpackMode: "lazy-once" */
 					/* webpackPrefetch: true */
@@ -130,7 +129,7 @@ export default {
 				)
 				this.showEditor(language)
 			} catch (error) {
-				logger.error(`could not find CKEditor translations for "${language}"`, { error })
+				logger.error(`could not find CKEditor translations for "${language}"`)
 				this.showEditor('en')
 			}
 		},
@@ -205,9 +204,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-::v-deep a {
-	color: #07d;
-}
 ::v-deep p {
 	cursor: text;
 }

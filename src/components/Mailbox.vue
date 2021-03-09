@@ -20,11 +20,8 @@
   -->
 
 <template>
-	<Error v-if="error"
-		:error="t('mail', 'Could not open mailbox')"
-		message=""
-		role="alert" />
-	<Loading v-else-if="loadingEnvelopes" :hint="t('mail', 'Loading messages')" role="alert" />
+	<Error v-if="error" :error="t('mail', 'Could not open mailbox')" message="" />
+	<Loading v-else-if="loadingEnvelopes" :hint="t('mail', 'Loading messages')" />
 	<Loading
 		v-else-if="loadingCacheInitialization"
 		:hint="t('mail', 'Loading messages')"
@@ -142,9 +139,6 @@ export default {
 		},
 		mailbox() {
 			this.loadEnvelopes()
-				.then(() => {
-					this.sync(false)
-				})
 		},
 		searchQuery() {
 			this.loadEnvelopes()
@@ -157,10 +151,7 @@ export default {
 		this.loadMailboxInterval = setInterval(this.loadMailbox, 60000)
 	},
 	async mounted() {
-		this.loadEnvelopes()
-			.then(() => {
-				this.sync(false)
-			})
+		return await this.loadEnvelopes()
 	},
 	destroyed() {
 		this.bus.$off('loadMore', this.onScroll)
@@ -173,7 +164,12 @@ export default {
 			this.loadingCacheInitialization = true
 			this.error = false
 
-			this.sync(true)
+			this.$store
+				.dispatch('syncEnvelopes', {
+					mailboxId: this.mailbox.databaseId,
+					query: this.searchQuery,
+					init: true,
+				})
 				.then(() => {
 					this.loadingCacheInitialization = false
 
@@ -357,7 +353,9 @@ export default {
 				break
 			case 'refresh':
 				logger.debug('syncing envelopes via shortkey')
-				this.sync(false)
+				if (!this.refreshing) {
+					this.sync()
+				}
 
 				break
 			case 'unseen':
@@ -373,19 +371,15 @@ export default {
 				logger.warn('shortcut ' + e.srcKey + ' is unknown. ignoring.')
 			}
 		},
-		async sync(init = false) {
-			logger.debug('syncing mailbox')
-			if (this.refreshing) {
-				logger.debug("already sync'ing, aborting")
-				return
-			}
-
+		async sync() {
+			logger.debug("mailbox sync'ing")
 			this.refreshing = true
+
 			try {
 				await this.$store.dispatch('syncEnvelopes', {
+					accountId: this.account.accountId,
 					mailboxId: this.mailbox.databaseId,
 					query: this.searchQuery,
-					init,
 				})
 			} catch (error) {
 				matchError(error, {
@@ -398,7 +392,6 @@ export default {
 				})
 			} finally {
 				this.refreshing = false
-				logger.debug("finished sync'ing mailbox")
 			}
 		},
 		onDelete(id) {
@@ -444,7 +437,12 @@ export default {
 				return
 			}
 			try {
-				await this.sync(false)
+				await this.$store.dispatch('syncEnvelopes', {
+					mailboxId: this.$route.params.mailboxId,
+					query: this.searchQuery,
+				})
+
+				logger.debug("Mailbox sync'ed in background")
 			} catch (error) {
 				logger.error('Background sync failed: ' + error.message, { error })
 			}

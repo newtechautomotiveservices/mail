@@ -50,7 +50,6 @@ export default new Vuex.Store({
 			},
 		},
 		accountList: [UNIFIED_ACCOUNT_ID],
-		allAccountSettings: [],
 		mailboxes: {
 			[UNIFIED_INBOX_ID]: {
 				id: UNIFIED_INBOX_ID,

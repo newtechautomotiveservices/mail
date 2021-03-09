@@ -25,12 +25,11 @@ declare(strict_types=1);
 
 namespace OCA\Mail\Db;
 
+use Horde_Imap_Client;
 use OCA\Mail\Account;
 use OCA\Mail\Address;
 use OCA\Mail\AddressList;
 use OCA\Mail\IMAP\Threading\DatabaseMessage;
-use OCA\Mail\Service\Search\Flag;
-use OCA\Mail\Service\Search\FlagExpression;
 use OCA\Mail\Service\Search\SearchQuery;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\QBMapper;
@@ -38,11 +37,10 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\IUser;
-use RuntimeException;
 use function array_combine;
 use function array_keys;
 use function array_map;
-use function get_class;
+use function in_array;
 use function ltrim;
 use function mb_substr;
 
@@ -98,7 +96,7 @@ class MessageMapper extends QBMapper {
 			->where($query->expr()->eq('mailbox_id', $query->createNamedParameter($mailbox->getId())));
 
 		$result = $query->execute();
-		$max = (int)$result->fetchColumn();
+		$max = (int)$result->fetchColumn(0);
 		$result->closeCursor();
 
 		if ($max === 0) {
@@ -251,7 +249,6 @@ class MessageMapper extends QBMapper {
 		$qb1->setValue('flag_junk', $qb1->createParameter('flag_junk'));
 		$qb1->setValue('flag_notjunk', $qb1->createParameter('flag_notjunk'));
 		$qb1->setValue('flag_important', $qb1->createParameter('flag_important'));
-		$qb1->setValue('flag_mdnsent', $qb1->createParameter('flag_mdnsent'));
 		$qb2 = $this->db->getQueryBuilder();
 
 		$qb2->insert('mail_recipients')
@@ -281,7 +278,6 @@ class MessageMapper extends QBMapper {
 			$qb1->setParameter('flag_junk', $message->getFlagJunk(), IQueryBuilder::PARAM_BOOL);
 			$qb1->setParameter('flag_notjunk', $message->getFlagNotjunk(), IQueryBuilder::PARAM_BOOL);
 			$qb1->setParameter('flag_important', $message->getFlagImportant(), IQueryBuilder::PARAM_BOOL);
-			$qb1->setParameter('flag_mdnsent', $message->getFlagMdnsent(), IQueryBuilder::PARAM_BOOL);
 
 			$qb1->execute();
 
@@ -332,8 +328,6 @@ class MessageMapper extends QBMapper {
 			->set('flag_forwarded', $query->createParameter('flag_forwarded'))
 			->set('flag_junk', $query->createParameter('flag_junk'))
 			->set('flag_notjunk', $query->createParameter('flag_notjunk'))
-			->set('flag_mdnsent', $query->createParameter('flag_mdnsent'))
-			->set('flag_important', $query->createParameter('flag_important'))
 			->set('updated_at', $query->createNamedParameter($this->timeFactory->getTime()))
 			->where($query->expr()->andX(
 				$query->expr()->eq('uid', $query->createParameter('uid')),
@@ -356,8 +350,6 @@ class MessageMapper extends QBMapper {
 			$query->setParameter('flag_forwarded', $message->getFlagForwarded(), IQueryBuilder::PARAM_BOOL);
 			$query->setParameter('flag_junk', $message->getFlagJunk(), IQueryBuilder::PARAM_BOOL);
 			$query->setParameter('flag_notjunk', $message->getFlagNotjunk(), IQueryBuilder::PARAM_BOOL);
-			$query->setParameter('flag_mdnsent', $message->getFlagMdnsent(), IQueryBuilder::PARAM_BOOL);
-			$query->setParameter('flag_important', $message->getFlagImportant(), IQueryBuilder::PARAM_BOOL);
 
 			$query->execute();
 		}
@@ -406,17 +398,6 @@ class MessageMapper extends QBMapper {
 	}
 
 	public function deleteAll(Mailbox $mailbox): void {
-		$messageIdQuery = $this->db->getQueryBuilder();
-		$deleteRecipientsQuery = $this->db->getQueryBuilder();
-		$messageIdQuery->select('id')
-			->from($this->getTableName())
-			->where($messageIdQuery->expr()->eq('mailbox_id', $deleteRecipientsQuery->createNamedParameter($mailbox->getId())));
-
-		// delete all related recipient entries
-		$deleteRecipientsQuery->delete('mail_recipients')
-			->where($deleteRecipientsQuery->expr()->in('message_id', $deleteRecipientsQuery->createFunction($messageIdQuery->getSQL()), IQueryBuilder::PARAM_INT_ARRAY));
-		$deleteRecipientsQuery->execute();
-
 		$query = $this->db->getQueryBuilder();
 
 		$query->delete($this->getTableName())
@@ -426,20 +407,6 @@ class MessageMapper extends QBMapper {
 	}
 
 	public function deleteByUid(Mailbox $mailbox, int ...$uids): void {
-		$messageIdQuery = $this->db->getQueryBuilder();
-		$deleteRecipientsQuery = $this->db->getQueryBuilder();
-
-		$messageIdQuery->select('id')
-			->from($this->getTableName())
-			->where(
-				$messageIdQuery->expr()->eq('mailbox_id', $deleteRecipientsQuery->createNamedParameter($mailbox->getId())),
-				$messageIdQuery->expr()->in('uid', $deleteRecipientsQuery->createNamedParameter($uids, IQueryBuilder::PARAM_INT_ARRAY))
-			);
-		// delete all related recipient entries
-		$deleteRecipientsQuery->delete('mail_recipients')
-			->where($deleteRecipientsQuery->expr()->in('message_id', $messageIdQuery->createFunction($messageIdQuery->getSQL()), IQueryBuilder::PARAM_INT_ARRAY));
-		$deleteRecipientsQuery->execute();
-
 		$query = $this->db->getQueryBuilder();
 
 		$query->delete($this->getTableName())
@@ -460,26 +427,37 @@ class MessageMapper extends QBMapper {
 	public function findThread(Account $account, int $messageId): array {
 		$qb = $this->db->getQueryBuilder();
 		$subQb1 = $this->db->getQueryBuilder();
+		$subQb2 = $this->db->getQueryBuilder();
 
 		$mailboxIdsQuery = $subQb1
 			->select('id')
 			->from('mail_mailboxes')
 			->where($qb->expr()->eq('account_id', $qb->createNamedParameter($account->getId(), IQueryBuilder::PARAM_INT)));
+		$threadRootIdsQuery = $subQb2
+			->select('thread_root_id')
+			->from($this->getTableName())
+			->where(
+				$qb->expr()->eq('id', $qb->createNamedParameter($messageId, IQueryBuilder::PARAM_INT), IQueryBuilder::PARAM_INT)
+			);
 
 		/**
 		 * Select the message with the given ID or any that has the same thread ID
 		 */
 		$selectMessages = $qb
-			->select('m2.*')
-			->from($this->getTableName(), 'm1')
-			->leftJoin('m1', $this->getTableName(), 'm2',  $qb->expr()->eq('m1.thread_root_id', 'm2.thread_root_id'))
+			->select('*')
+			->from($this->getTableName())
 			->where(
-				$qb->expr()->in('m1.mailbox_id', $qb->createFunction($mailboxIdsQuery->getSQL()), IQueryBuilder::PARAM_INT_ARRAY),
-				$qb->expr()->in('m2.mailbox_id', $qb->createFunction($mailboxIdsQuery->getSQL()), IQueryBuilder::PARAM_INT_ARRAY),
-				$qb->expr()->eq('m1.id', $qb->createNamedParameter($messageId, IQueryBuilder::PARAM_INT), IQueryBuilder::PARAM_INT),
-				$qb->expr()->isNotNull('m1.thread_root_id')
+				$qb->expr()->in('mailbox_id', $qb->createFunction($mailboxIdsQuery->getSQL()), IQueryBuilder::PARAM_INT_ARRAY),
+				$qb->expr()->orX(
+					$qb->expr()->eq('id', $qb->createNamedParameter($messageId, IQueryBuilder::PARAM_INT), IQueryBuilder::PARAM_INT),
+					$qb->expr()->andX(
+						$qb->expr()->isNotNull('thread_root_id'),
+						$qb->expr()->in('thread_root_id', $qb->createFunction($threadRootIdsQuery->getSQL()), IQueryBuilder::PARAM_INT_ARRAY)
+					)
+				)
 			)
 			->orderBy('sent_at', 'desc');
+
 		return $this->findRecipients($this->findEntities($selectMessages));
 	}
 
@@ -561,15 +539,25 @@ class MessageMapper extends QBMapper {
 				$qb->expr()->in('uid', $qb->createNamedParameter($uids, IQueryBuilder::PARAM_INT_ARRAY))
 			);
 		}
-		foreach ($query->getFlags() as $flag) {
-			$select->andWhere($qb->expr()->eq($this->flagToColumnName($flag), $qb->createNamedParameter($flag->isSet(), IQueryBuilder::PARAM_BOOL)));
-		}
-		if (!empty($query->getFlagExpressions())) {
-			$select->andWhere(
-				...array_map(function (FlagExpression $expr) use ($select) {
-					return $this->flagExpressionToQuery($expr, $select);
-				}, $query->getFlagExpressions())
-			);
+
+		$flags = $query->getFlags();
+		$flagKeys = array_keys($flags);
+		foreach ([
+			Horde_Imap_Client::FLAG_ANSWERED,
+			Horde_Imap_Client::FLAG_DELETED,
+			Horde_Imap_Client::FLAG_DRAFT,
+			Horde_Imap_Client::FLAG_FLAGGED,
+			Horde_Imap_Client::FLAG_RECENT,
+			Horde_Imap_Client::FLAG_SEEN,
+			Horde_Imap_Client::FLAG_FORWARDED,
+			Horde_Imap_Client::FLAG_JUNK,
+			Horde_Imap_Client::FLAG_NOTJUNK,
+			'\\important',
+		] as $flag) {
+			if (in_array($flag, $flagKeys, true)) {
+				$key = ltrim($flag, '\\');
+				$select->andWhere($qb->expr()->eq("flag_$key", $qb->createNamedParameter($flags[$flag], IQueryBuilder::PARAM_BOOL)));
+			}
 		}
 
 		$select = $select
@@ -659,15 +647,25 @@ class MessageMapper extends QBMapper {
 				$qb->expr()->in('uid', $qb->createNamedParameter($uids, IQueryBuilder::PARAM_INT_ARRAY))
 			);
 		}
-		foreach ($query->getFlags() as $flag) {
-			$select->andWhere($qb->expr()->eq($this->flagToColumnName($flag), $qb->createNamedParameter($flag->isSet(), IQueryBuilder::PARAM_BOOL)));
-		}
-		if (!empty($query->getFlagExpressions())) {
-			$select->andWhere(
-				...array_map(function (FlagExpression $expr) use ($select) {
-					return $this->flagExpressionToQuery($expr, $select);
-				}, $query->getFlagExpressions())
-			);
+
+		$flags = $query->getFlags();
+		$flagKeys = array_keys($flags);
+		foreach ([
+			Horde_Imap_Client::FLAG_ANSWERED,
+			Horde_Imap_Client::FLAG_DELETED,
+			Horde_Imap_Client::FLAG_DRAFT,
+			Horde_Imap_Client::FLAG_FLAGGED,
+			Horde_Imap_Client::FLAG_RECENT,
+			Horde_Imap_Client::FLAG_SEEN,
+			Horde_Imap_Client::FLAG_FORWARDED,
+			Horde_Imap_Client::FLAG_JUNK,
+			Horde_Imap_Client::FLAG_NOTJUNK,
+			'\\important',
+		] as $flag) {
+			if (in_array($flag, $flagKeys, true)) {
+				$key = ltrim($flag, '\\');
+				$select->andWhere($qb->expr()->eq("flag_$key", $qb->createNamedParameter($flags[$flag], IQueryBuilder::PARAM_BOOL)));
+			}
 		}
 
 		$select = $select
@@ -680,39 +678,6 @@ class MessageMapper extends QBMapper {
 		return array_map(function (Message $message) {
 			return $message->getId();
 		}, $this->findEntities($select));
-	}
-
-	private function flagExpressionToQuery(FlagExpression $expr, IQueryBuilder $qb): string {
-		$operands = array_map(function (object $operand) use ($qb) {
-			if ($operand instanceof Flag) {
-				return $qb->expr()->eq(
-					$this->flagToColumnName($operand),
-					$qb->createNamedParameter($operand->isSet(), IQueryBuilder::PARAM_BOOL),
-					IQueryBuilder::PARAM_BOOL
-				);
-			}
-			if ($operand instanceof FlagExpression) {
-				return $this->flagExpressionToQuery($operand, $qb);
-			}
-
-			throw new RuntimeException('Invalid operand type ' . get_class($operand));
-		}, $expr->getOperands());
-
-		switch ($expr->getOperator()) {
-			case 'and':
-				/** @psalm-suppress InvalidCast */
-				return (string) $qb->expr()->andX(...$operands);
-			case 'or':
-				/** @psalm-suppress InvalidCast */
-				return (string) $qb->expr()->orX(...$operands);
-			default:
-				throw new RuntimeException('Unknown operator ' . $expr->getOperator());
-		}
-	}
-
-	private function flagToColumnName(Flag $flag): string {
-		$key = ltrim($flag->getFlag(), '\\$');
-		return "flag_$key";
 	}
 
 	/**

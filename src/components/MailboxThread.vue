@@ -1,15 +1,15 @@
 <template>
 	<AppContent>
+		<AppDetailsToggle v-if="showThread" @close="hideMessage" />
 		<div id="app-content-wrapper">
 			<AppContentList
+				style="min-width:330px;"
 				v-infinite-scroll="onScroll"
 				v-shortkey.once="shortkeys"
 				infinite-scroll-immediate-check="false"
 				:show-details="showThread"
 				:infinite-scroll-disabled="false"
 				:infinite-scroll-distance="10"
-				role="heading"
-				:aria-level="2"
 				@shortkey.native="onShortcut">
 				<Mailbox
 					v-if="!mailbox.isPriorityInbox"
@@ -19,7 +19,7 @@
 					:bus="bus" />
 				<template v-else>
 					<div class="app-content-list-item">
-						<SectionTitle class="important" :name="t('mail', 'Important and unread')" />
+						<SectionTitle class="important" :name="t('mail', 'Important')" />
 						<Popover trigger="hover focus">
 							<button slot="trigger" :aria-label="t('mail', 'Important info')" class="button icon-info" />
 							<p class="important-info">
@@ -31,7 +31,7 @@
 						class="nameimportant"
 						:account="unifiedAccount"
 						:mailbox="unifiedInbox"
-						:search-query="appendToSearch('is:pi-important')"
+						:search-query="appendToSearch('is:important')"
 						:paginate="'manual'"
 						:is-priority-inbox="true"
 						:initial-page-size="5"
@@ -42,7 +42,7 @@
 						class="namestarred"
 						:account="unifiedAccount"
 						:mailbox="unifiedInbox"
-						:search-query="appendToSearch('is:pi-starred')"
+						:search-query="appendToSearch('is:starred not:important')"
 						:paginate="'manual'"
 						:is-priority-inbox="true"
 						:initial-page-size="5"
@@ -53,7 +53,7 @@
 						:account="unifiedAccount"
 						:mailbox="unifiedInbox"
 						:open-first="false"
-						:search-query="appendToSearch('is:pi-other')"
+						:search-query="appendToSearch('not:starred not:important')"
 						:is-priority-inbox="true"
 						:bus="bus" />
 				</template>
@@ -74,6 +74,7 @@ import isMobile from '@nextcloud/vue/dist/Mixins/isMobile'
 import SectionTitle from './SectionTitle'
 import Vue from 'vue'
 
+import AppDetailsToggle from './AppDetailsToggle'
 import logger from '../logger'
 import Mailbox from './Mailbox'
 import NewMessageDetail from './NewMessageDetail'
@@ -89,6 +90,7 @@ export default {
 	components: {
 		AppContent,
 		AppContentList,
+		AppDetailsToggle,
 		Mailbox,
 		NewMessageDetail,
 		NoMessageSelected,
@@ -155,6 +157,15 @@ export default {
 		},
 	},
 	methods: {
+		hideMessage() {
+			this.$router.replace({
+				name: 'mailbox',
+				params: {
+					mailboxId: this.mailbox.databaseId,
+					filter: this.$route.params.filter ? this.$route.params.filter : undefined,
+				},
+			})
+		},
 		deleteMessage(id) {
 			this.bus.$emit('delete', id)
 		},
